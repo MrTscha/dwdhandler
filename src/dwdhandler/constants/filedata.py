@@ -41,5 +41,42 @@ TIME_RESOLUTION_MAP = {
                 ['historical',
                  'recent'
                 ]
+               ],
+    'monthly': [['kl',
+                 'more_precip',
+                 'weather_phenomena'
+                ],
+                ['historical',
+                 'recent'
+                ]
                ]
+}
+
+NAME_CONVERSATION_MAP = {
+    'air_temperature':'TU',
+    'cloud_type':'CS',
+    'cloudiness':'N',
+    'dewpoint':'TD',
+    'extreme_wind':'FX',
+    'moisture':'TF',
+    'precipitation':'RR',
+    'pressure':'P0',
+    'soil_temp':'EB',
+    'soil_temperature':'EB',
+    'solar':'ST',  
+    'sun':'SD',
+    'visibility':'VV',
+    'weather_phenomena':'WW',
+    'wind':'FF',
+    'wind_synop':'F',
+    'kl':'KL',
+    '10_minutes':'10minutenwerte',
+    '10_minutes_meta':'zehn_min',
+    'hourly':'stundenwerte',
+    'hourly_meta':'Stundenwerte',
+    'daily':'tageswerte',
+    'daily_meta':'Tageswerte',
+    'monthly':'monatswerte',
+    'monthly_meta':'Monatswerte',
+    'meta_file_stationen':'_Beschreibung_Stationen.txt'
 }

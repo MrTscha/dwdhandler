@@ -11,11 +11,14 @@ Created on Thu Jun 08 17:45:40 2020
 #import system modules
 from sys import exit, stdout
 import os
+import pandas as pd
 
 # local modules
-from .constants.serverdata import SERVERPATH_CLIMATE_GERM
-from .constants.filedata import MAIN_FOLDER, TIME_RESOLUTION_MAP, METADATA_FOLDER
+from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME
+from .constants.filedata import (MAIN_FOLDER, TIME_RESOLUTION_MAP, 
+                                METADATA_FOLDER, NAME_CONVERSATION_MAP)
 from .helper.hfunctions import check_create_dir
+from .helper.ftp import cftp
 
 class dow_handler(dict):
     def __init__(self, 
@@ -45,6 +48,8 @@ class dow_handler(dict):
         self.date_check = date_check
         self.resolution = resolution
         self.base_dir   = base_dir
+        # store "Home" Directory
+        self.home_dir   = os.getcwd() 
 
         self.prepare_download()
 
@@ -87,13 +92,37 @@ class dow_handler(dict):
 
         # create local location to save data description
         pathlocal  = self.base_dir+METADATA_FOLDER+f'{self.resolution}_{self.par}/'
-        filelocal  = '{self.par}_metadata_{self.period}.txt'
         # create path on remote server
         pathremote = SERVERPATH_CLIMATE_GERM+f'{self.resolution}/{self.par}/{self.period}/'
+        # create meta data filename 
+        filename = self.create_metaname()
         print(pathlocal)
         print(pathremote)
+        print(pathremote+filename)
+
+        # check if dir already exists
         check_create_dir(pathlocal)
+
+        # Try to download Metadatafile
+        metaftp = cftp(SERVERNAME)
+        metaftp.open_ftp()
+        metaftp.cwd_ftp(pathremote)
+        os.chdir(pathlocal)
+
+        if(self.debug):
+            print(f"Retrieve {pathremote+filename}")
+
+        metaftp.save_file(filename,filename)
+        
+        metaftp.close_ftp()
+
+        os.chdir(self.home_dir)
+
         print("Station Metadata not yet fully implemented")
+
+    def create_metaname(self):
+
+        return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
 
     def get_raster_metadata(self):
         """ Get Raster Data Metadata
@@ -101,3 +130,10 @@ class dow_handler(dict):
 
         print("Raster Metadata not yet implemented")
 
+    def get_obj_station(self,key,obj='name'):
+        """ Get Metadata of Station Metadatafile """
+
+        if(obj in ['von','bis']):
+            return pd.to_datetime(self.df_station_list[self.df_station_list.index == key][obj].values[0])
+        else:
+            return self.df_station_list[self.df_station_list.index == key][obj].values[0]
