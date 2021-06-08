@@ -17,7 +17,7 @@ import pandas as pd
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME
 from .constants.filedata import (MAIN_FOLDER, TIME_RESOLUTION_MAP, 
                                 METADATA_FOLDER, NAME_CONVERSATION_MAP)
-from .helper.hfunctions import check_create_dir
+from .helper.hfunctions import check_create_dir, read_station_list
 from .helper.ftp import cftp
 
 class dow_handler(dict):
@@ -115,6 +115,8 @@ class dow_handler(dict):
         metaftp.save_file(filename,filename)
         
         metaftp.close_ftp()
+
+        self.df_station_list = read_station_list(pathlocal+filename)
 
         os.chdir(self.home_dir)
 
