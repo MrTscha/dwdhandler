@@ -6,10 +6,14 @@ Created on Sat Jun 06 17:32:40 2021
 @email: tobias.schad@googlemail.com
 @description: some helper functions """
 
-from os import makedirs
-from os.path import exists
+from os import makedirs, system, popen, getcwd, listdir, chdir
+from os.path import exists, isfile, join
+import glob
+from sys import stdout
 import pandas as pd
+import numpy as np
 import datetime
+import zipfile
 
 def check_create_dir(dir_in):
     """ Simple check if dir exists, if not create it """
@@ -17,15 +21,15 @@ def check_create_dir(dir_in):
     if not exists(dir_in):
         makedirs(dir_in)
 
-def read_station_list(filelocation,debug=False):
+def read_station_list(dir_in,file_in,debug=False):
     """ Reads DWD station list metadata """
 
     if(debug):
-        print("Open file {} and read station list".format(filelocation))                                
+        print("Open file {} and read station list".format(dir_in+file_in))                                
 
-    #self.check_file_encoding(dir_dwd_station,station_file)                                                        
+    check_file_encoding(dir_in,file_in)                                                        
 
-    input_file = open(filelocation,"r")                                                           
+    input_file = open(dir_in+file_in,"r")                                                           
 
     lines = input_file.readlines()                                                                                
 
@@ -95,3 +99,99 @@ def extract_yyyymmddhh(date,sep='',l_minutes=False):
         return year, month, day, hour, minutes
     else:
         return year, month, day, hour
+
+def check_file_encoding(dir_in,fil_in,return_enc=False,debug=False):
+    """ Checks file encoding and change it """
+
+    if(debug):
+        print("Check File Encoding")
+        print(dir_in)
+        print(fil_in)
+
+    fil_open = dir_in+fil_in
+    f = popen('file -i {}'.format(fil_open))
+    output = f.read()
+    #print(output)
+    #f_index = encoding.index('charset')
+    s_index = output.index('=') # find encoding
+    encoding = output[s_index+1:].strip()
+    encoding.replace(" ","")
+
+    if(not return_enc):
+        fil_temp = dir_in+'tmp'
+        system('iconv -f {} -t utf-8 {} > {}'.format(encoding,fil_open,fil_temp))
+        system('mv {} {}'.format(fil_temp,fil_open))
+    #print(encoding)
+
+    if(return_enc):
+        return encoding
+
+def update_progress(progress):
+    """ Display simple progress bar 
+    """
+    barLength = 10  # modify this to change length of the progress bar
+
+    status = ""
+    if(isinstance(progress, int)):
+        progress = float(progress)
+    if(not isinstance(progress, float)):
+        progress = 0
+        status = "error: progress var must be float\r\n"                             
+    if progress < 0:                                                            
+        progress = 0
+        status = "Halt...\r\n"                                                      
+    if progress >= 1:                                                                                     
+        progress = 1
+        status = "Done...\r\n"
+    block = int(round(barLength*progress))
+    text = "\rPercent: [{0}] {1}% {2}".format( "#"*block + "-"*(barLength-block), round(progress*100), status)
+    stdout.write(text)        
+    stdout.flush()    
+
+def unzip_file(fil_in,dir_in='',dir_to=''):
+    """ Unzips file """
+
+    if(dir_to == ''):
+        dir_to = dir_in
+
+    if(dir_in == '' and dir_to == ''): #expecting absolute path
+        zip_ref = zipfile.ZipFile(fil_in,'r')
+        zip_ref.extractall()
+        zip_ref.close()
+    elif(dir_in == '' and dir_to != ''):
+        try:
+            zip_ref = zipfile.ZipFile(fil_in, 'r')
+            zip_ref.extractall(dir_to)
+            zip_ref.close()
+        except:
+            print("File is not readible")
+    elif(dir_in != '' and dir_to == ''):
+        zip_ref = zipfile.ZipFile(dir_in+'/'+fil_in, 'r')
+        zip_ref.extractall()
+        zip_ref.close()
+    else:
+        zip_ref = zipfile.ZipFile(dir_in+'/'+fil_in, 'r')
+        zip_ref.extractall(dir_to)
+        zip_ref.close()
+
+def list_files(dir_in, ending='',only_files=False):
+    """ List files in directory 
+        ending: if specified only files with this ending are returned
+    """
+
+    if(ending != ''):
+        if(ending[0:1] != '*.'):
+                ending = '*.'+ending
+
+        if(only_files):
+            dir_pwd = getcwd()
+            check_create_dir(dir_in)
+            chdir(dir_in)
+            r_files = glob.glob(ending)
+            chdir(dir_pwd)
+        else:
+            r_files = glob.glob(dir_in+'/'+ending)
+    else:
+        r_files = [f for f in listdir(dir_in) if isfile(join(dir_in, f))]
+
+    return r_files

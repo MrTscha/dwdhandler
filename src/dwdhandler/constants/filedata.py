@@ -6,10 +6,11 @@ Created on Sat Jun 06 17:32:40 2021
 @email: tobias.schad@googlemail.com
 @description: Local file data constants """
 
-MAIN_FOLDER     = './dwd_data/'
+MAIN_FOLDER     = 'dwd_data/'
 METADATA_FOLDER = 'metadata/'
 STATION_FOLDER  = 'station_data/'
 RASTER_FOLDER   = 'raster_data/'
+SQLITEFILESTAT  = 'DWD_STATION.sqlite'
 
 TIME_RESOLUTION_MAP = {
     'hourly': [['air_temperature',
@@ -69,6 +70,7 @@ NAME_CONVERSATION_MAP = {
     'weather_phenomena':'WW',
     'wind':'FF',
     'wind_synop':'F',
+    'more_precip':'RR',
     'kl':'KL',
     '10_minutes':'10minutenwerte',
     '10_minutes_meta':'zehn_min',
@@ -78,5 +80,7 @@ NAME_CONVERSATION_MAP = {
     'daily_meta':'Tageswerte',
     'monthly':'monatswerte',
     'monthly_meta':'Monatswerte',
-    'meta_file_stationen':'_Beschreibung_Stationen.txt'
+    'meta_file_stationen':'_Beschreibung_Stationen.txt',
+    'recent':'akt',
+    'historical':'hist'
 }

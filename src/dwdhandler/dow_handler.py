@@ -9,23 +9,25 @@ Created on Thu Jun 08 17:45:40 2020
 """
 
 #import system modules
-from sys import exit, stdout
+from sys import exit, float_repr_style, stdout
 import os
 import pandas as pd
+import datetime
+import shutil
+import sqlite3
 
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME
-from .constants.filedata import (MAIN_FOLDER, TIME_RESOLUTION_MAP, 
-                                METADATA_FOLDER, NAME_CONVERSATION_MAP)
-from .helper.hfunctions import check_create_dir, read_station_list
+from .constants.filedata import * 
+from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
 from .helper.ftp import cftp
 
 class dow_handler(dict):
     def __init__(self, 
                  dtype='station',
-                 par='air_temperature',
+                 par='air_temperature' ,
                  resolution='hourly',
-                 base_dir=MAIN_FOLDER,
+                 base_dir=os.getcwd()+'/'+MAIN_FOLDER,
                  period='recent',
                  local_time = False,
                  date_check = None,
@@ -43,13 +45,14 @@ class dow_handler(dict):
         self.dtype  = dtype
         self.par    = par
         self.period = period
-        self.debug  = False
+        self.debug  = debug
         self.local_time = local_time
         self.date_check = date_check
         self.resolution = resolution
         self.base_dir   = base_dir
         # store "Home" Directory
-        self.home_dir   = os.getcwd() 
+        self.home_dir   = os.getcwd()  ### TODO: Das geht hier vlt nicht so einfach... beißt sich mit base_dir und dem wechseln in die Verzeichnisse
+        self.tmp_dir    = 'tmp{}/'.format(datetime.datetime.now().strftime('%s'))
 
         self.prepare_download()
 
@@ -60,6 +63,8 @@ class dow_handler(dict):
         check_create_dir(self.base_dir)
 
         self.check_parameters()
+
+        self.create_dirs()
         
         self.get_metadata()
 
@@ -78,6 +83,21 @@ class dow_handler(dict):
                 f"{TIME_RESOLUTION_MAP}" ### !!! >>TS TODO introduce better print function !!! <<TS###
             )
 
+    def create_dirs(self):
+        """
+        Create directories
+        """
+
+        if(self.dtype == 'station'):
+            # create local location to save data description
+            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'{self.resolution}_{self.par}/'
+            # create path on remote server of metadata and data
+            self.pathremote = SERVERPATH_CLIMATE_GERM+f'{self.resolution}/{self.par}/{self.period}/'
+            # create local data to save data
+            self.pathdlocal = self.base_dir+STATION_FOLDER
+            # create temp directory to avoid clashes of data streams
+            self.pathdlocaltmp = self.base_dir+self.tmp_dir
+
     def get_metadata(self):
         """ Gets Metadata of data """
 
@@ -90,47 +110,223 @@ class dow_handler(dict):
         """ Get Station Metadata
         """
 
-        # create local location to save data description
-        pathlocal  = self.base_dir+METADATA_FOLDER+f'{self.resolution}_{self.par}/'
-        # create path on remote server
-        pathremote = SERVERPATH_CLIMATE_GERM+f'{self.resolution}/{self.par}/{self.period}/'
         # create meta data filename 
         filename = self.create_metaname()
-        print(pathlocal)
-        print(pathremote)
-        print(pathremote+filename)
 
         # check if dir already exists
-        check_create_dir(pathlocal)
-
+        check_create_dir(self.pathmlocal)
         # Try to download Metadatafile
         metaftp = cftp(SERVERNAME)
         metaftp.open_ftp()
-        metaftp.cwd_ftp(pathremote)
-        os.chdir(pathlocal)
+        metaftp.cwd_ftp(self.pathremote)
+        os.chdir(self.pathmlocal)
 
         if(self.debug):
-            print(f"Retrieve {pathremote+filename}")
+            print(f"Retrieve {self.pathremote+filename}")
 
         metaftp.save_file(filename,filename)
         
         metaftp.close_ftp()
 
-        self.df_station_list = read_station_list(pathlocal+filename)
-
         os.chdir(self.home_dir)
 
-        print("Station Metadata not yet fully implemented")
+        self.df_station_list = read_station_list(self.pathmlocal,filename)
 
     def create_metaname(self):
 
         return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+
+    def create_station_filename(self,key):
+        """ Creates file location on ftp """
+
+        if(self.period == 'recent'):
+            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+        elif(self.period == 'now'):
+            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+        else:
+            cvon = self.get_obj_station(key,obj='von').strftime('%Y%m%d')
+            tbis = self.get_obj_station(key,obj='bis')
+            if(tbis.year == datetime.datetime.now().year):
+                cbis = '{}1231'.format(tbis.year-1)
+            else:
+                cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
+            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
 
     def get_raster_metadata(self):
         """ Get Raster Data Metadata
         """
 
         print("Raster Metadata not yet implemented")
+
+    def retrieve_dwd_station(self,key_arr,to_sqlite=True):
+        """ Retrieves DWD Station data 
+            key_arr:   IDs of stations to retrieve, 1D-Array
+            to_sqlite: Saves data within SQLITE databank
+        """
+
+        # test types of input parameters
+        assert isinstance(key_arr, list)
+
+        check_create_dir(self.pathdlocal)
+        check_create_dir(self.pathdlocaltmp)
+
+        os.chdir(self.pathdlocaltmp)
+
+        metaftp = cftp(SERVERNAME)
+        metaftp.open_ftp()
+        metaftp.cwd_ftp(self.pathremote)
+
+        for key in key_arr:
+            filename = self.create_station_filename(key)
+            check_create_dir(key)
+            os.chdir(key)
+            if(self.debug):
+                print(f"Retrieve: {self.pathremote+filename}")
+
+            metaftp.save_file(filename,filename)
+            unzip_file(filename)
+            df_tmp = self.get_station_df_csv(os.getcwd())
+            self.to_sqlite(df_tmp, key) ## TODO, what if sqlite is not used?
+            os.chdir('../')
+
+        metaftp.close_ftp()
+
+        os.chdir(self.home_dir)
+
+        try:
+            shutil.rmtree(self.pathdlocaltmp)
+        except OSError as e:
+            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
+
+    def get_dwd_station_data(self,key):
+        """ Get Data from sqlite database """
+
+        filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+
+        con = sqlite3.connect(filename,uri=True)
+
+        tabname = f"{self.par}_{self.resolution}"
+
+        sqlexec = "SELECT * from {} WHERE STATIONS_ID = {}".format(tabname,key)
+
+        if(self.debug):
+            print("Get SQLITE data:")
+            print(sqlexec)
+
+        df_data = pd.read_sql_query(sqlexec, con)
+
+        con.close()
+
+        if(self.resolution == 'hourly'):
+            strformat='%Y%m%d%H'
+        elif(self.resolution == 'daily'):
+            strformat='%Y%m%d'
+        elif(self.resolution == 'monthly'):
+            strformat='%Y%m'
+        elif(self.resolution == 'yearly'):
+            strformat='%Y'
+
+        df_data.index = pd.to_datetime(df_data['MESS_DATUM'],format=strformat) ## TODO MESS_DATUM durch generisches filedata austauschen
+        df_data.drop(columns=['MESS_DATUM'],inplace=True)
+
+        columns = df_data.columns
+        replace_col = {}
+        for column in columns:
+            replace_col[column] = column.replace(' ','')
+
+        df_data.rename(columns=replace_col,inplace=True)
+
+        return df_data
+
+    def get_data(self,sqlexec):
+        """ Get data according to sqlexec"""
+    
+        filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+
+        con = sqlite3.connect(filename,uri=True)
+
+        df_data = pd.read_sql_query(sqlexec, con)
+
+        con.close()
+
+        if(self.resolution == 'hourly'):
+            strformat='%Y%m%d%H'
+        elif(self.resolution == 'daily'):
+            strformat='%Y%m%d'
+        elif(self.resolution == 'monthly'):
+            strformat='%Y%m'
+        elif(self.resolution == 'yearly'):
+            strformat='%Y'
+
+
+        df_data.index = pd.to_datetime(df_data['MESS_DATUM'],format=strformat)
+        df_data.drop(columns=['MESS_DATUM'],inplace=True)
+
+        columns = df_data.columns
+        replace_col = {}
+        for column in columns:
+            replace_col[column] = column.replace(' ','')
+
+        df_data.rename(columns=replace_col,inplace=True)
+
+        return df_data
+
+
+    def to_sqlite(self,df_in,key):
+        """ Save data to sqlite
+        """
+
+        filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+
+        con = sqlite3.connect(filename,uri=True)
+
+        tabname = f"{self.par}_{self.resolution}"
+
+        lnew = True
+
+        try:
+            sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
+            if(self.debug):
+                print("Compare Sets")
+                print(sqlexec)
+
+            df_old = pd.read_sql_query(sqlexec,con)
+            df_old.drop_duplicates(inplace=True)
+            df_test = pd.concat([df_old,df_in]).drop_duplicates().reset_index(drop=True)
+            df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
+            df_test.drop(columns='_merge',inplace=True)
+            df_test.to_sql(tabname, con, if_exists="append", index=False)
+            lnew = False
+
+        except Exception as Excp:
+            lnew = True  # if above fails, there seems to be no tab according to this name
+            print(Excp)
+
+        if(lnew):
+            df_in.to_sql(tabname, con, index=False)
+
+        con.close()
+
+
+    def get_station_df_csv(self,dir_in):
+        """
+        """
+
+        data_files = list_files(dir_in,ending='txt',only_files=True)
+        for file in data_files:
+            if('produkt' in file):
+                df_tmp = pd.read_csv(file,delimiter=';')
+                break
+
+        # remove blanks from column names
+        columns = df_tmp.columns 
+        replace_col = {}
+        for column in columns:
+            replace_col[column] = column.replace(' ','')
+
+        df_tmp.rename(columns=replace_col,inplace=True)
+
+        return df_tmp
 
     def get_obj_station(self,key,obj='name'):
         """ Get Metadata of Station Metadatafile """
