@@ -19,6 +19,7 @@ import sqlite3
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME
 from .constants.filedata import * 
+from .constants.constpar import FILLVALUE
 from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
 from .helper.ftp import cftp
 
@@ -176,18 +177,30 @@ class dow_handler(dict):
         metaftp.open_ftp()
         metaftp.cwd_ftp(self.pathremote)
 
+        ii = 0
+        i_tot = float(len(key_arr))
+        not_in_list = []
+
         for key in key_arr:
+            update_progress(ii/i_tot)
+            ii = ii + 1
             filename = self.create_station_filename(key)
             check_create_dir(key)
             os.chdir(key)
             if(self.debug):
                 print(f"Retrieve: {self.pathremote+filename}")
 
-            metaftp.save_file(filename,filename)
-            unzip_file(filename)
-            df_tmp = self.get_station_df_csv(os.getcwd())
-            self.to_sqlite(df_tmp, key) ## TODO, what if sqlite is not used?
+            try:
+                metaftp.save_file(filename,filename)
+                unzip_file(filename)
+                df_tmp = self.get_station_df_csv(os.getcwd())
+                self.to_sqlite(df_tmp, key) ## TODO, what if sqlite is not used?
+            except:
+                print(f"{self.pathremote+filename} not found")
+                not_in_list.append(self.pathremote+filename)
             os.chdir('../')
+
+        self.stations_not_found = not_in_list
 
         metaftp.close_ftp()
 
@@ -198,7 +211,7 @@ class dow_handler(dict):
         except OSError as e:
             print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
-    def get_dwd_station_data(self,key):
+    def get_dwd_station_data(self,key,mask_FillVal=True):
         """ Get Data from sqlite database """
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
@@ -236,9 +249,12 @@ class dow_handler(dict):
 
         df_data.rename(columns=replace_col,inplace=True)
 
+        if(mask_FillVal):
+            df_data.mask(df_data == FILLVALUE,inplace=True)
+
         return df_data
 
-    def get_data(self,sqlexec):
+    def get_data(self,sqlexec,mask_fillVal=True):
         """ Get data according to sqlexec"""
     
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
@@ -268,6 +284,9 @@ class dow_handler(dict):
             replace_col[column] = column.replace(' ','')
 
         df_data.rename(columns=replace_col,inplace=True)
+
+        if(mask_fillVal):
+            df_data.mask(df_data == FILLVALUE,inplace=True)
 
         return df_data
 
