@@ -4,7 +4,7 @@ Created on Thu Jun 08 17:45:40 2020
 
 @author: Tobias Schad
 @email: tobias.schad@googlemail.com
-@description: This module mainly handles downloading data from 
+@description: This module mainly handles downloading data from
               DWD opendata homepage
 """
 
@@ -15,16 +15,17 @@ import pandas as pd
 import datetime
 import shutil
 import sqlite3
+import numpy as np
 
 # local modules
-from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME
-from .constants.filedata import * 
+from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_RASTER_GERM
+from .constants.filedata import *
 from .constants.constpar import FILLVALUE
 from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
 from .helper.ftp import cftp
 
 class dow_handler(dict):
-    def __init__(self, 
+    def __init__(self,
                  dtype='station',
                  par='air_temperature' ,
                  resolution='hourly',
@@ -37,9 +38,11 @@ class dow_handler(dict):
         """
         This class handles the download of data originating from opendata.dwd.de
         dtype: specify type of data --> station:Station Data, raster: Raster Data, nwp: Numerical Forecast
-        period: Define period --> historical, recent, now 
+        period: Define period --> historical, recent, now
         local_time: translate to local time if wanted, otherwise time is in UTC
         date_check: check list of station data has to be data to this given date, if not specified today is used
+        
+        dtype raster has to be set with period recent! 
         """
 
         # store data
@@ -74,14 +77,19 @@ class dow_handler(dict):
         """
 
         #check = TIME_RESOLUTION_MAP.get(self.resolution, ([], []))
-        check = TIME_RESOLUTION_MAP[self.resolution]
+        if(self.dtype == 'station'):
+            time_check_map = TIME_RESOLUTION_MAP
+        elif(self.dtype == 'raster'):
+            time_check_map = TIME_RASTER_MAP
+
+        check = time_check_map[self.resolution]
 
         if(self.par not in check[0] or self.period not in check[1]):
             raise NameError(
-                f"Wrong combination of resolution={self.resolution},par={self.par}"
-                f"and period={self.period}."
-                f"Please check again:"
-                f"{TIME_RESOLUTION_MAP}" ### !!! >>TS TODO introduce better print function !!! <<TS###
+                f"Wrong combination of resolution={self.resolution}, par={self.par} "
+                f"and period={self.period}.\n"
+                f"Please check again:\n"
+                f"{time_check_map}" ### !!! >>TS TODO introduce better print function !!! <<TS###
             )
 
     def create_dirs(self):
@@ -98,6 +106,15 @@ class dow_handler(dict):
             self.pathdlocal = self.base_dir+STATION_FOLDER
             # create temp directory to avoid clashes of data streams
             self.pathdlocaltmp = self.base_dir+self.tmp_dir
+        elif(self.dtype == 'raster'):
+            # create local location to save data description
+            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'raster_{self.resolution}_{self.par}/'
+            # create path on remote server of metadata and data
+            self.pathremote = SERVERPATH_RASTER_GERM+f'{self.resolution}/{self.par}/'
+            # create local data to save data
+            self.pathdlocal = self.base_dir+RASTER_FOLDER+f'{self.par}/'
+            # create temp directory to avoid clashes of data streams
+            self.pathdlocaltmp = self.base_dir+self.tmp_dir
 
     def get_metadata(self):
         """ Gets Metadata of data """
@@ -112,7 +129,7 @@ class dow_handler(dict):
         """
 
         # create meta data filename 
-        filename = self.create_metaname()
+        filename = self.create_station_metaname()
 
         # check if dir already exists
         check_create_dir(self.pathmlocal)
@@ -133,9 +150,12 @@ class dow_handler(dict):
 
         self.df_station_list = read_station_list(self.pathmlocal,filename)
 
-    def create_metaname(self):
+    def create_station_metaname(self):
 
         return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+
+    def create_raster_metaname(self):
+        return f'DESCRIPTION_gridsgermany_{self.resolution}_{self.par}_en.pdf'
 
     def create_station_filename(self,key):
         """ Creates file location on ftp """
@@ -153,11 +173,110 @@ class dow_handler(dict):
                 cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
             return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
 
+    def create_raster_filename(self,year,month):
+        """ Creates file location on ftp for raster data """
+
+        if(self.par in RASTERNCDICT):
+            fil_ending = 'nc'
+        else:
+            fil_ending = 'asc.gz'
+
+        if(self.par in RASTERMONTHSUB):
+            return f'{RASTERMONTHDICT[month-1]}/grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.asc.gz'
+        else:
+            return f'{self.par}'
+
     def get_raster_metadata(self):
         """ Get Raster Data Metadata
         """
 
         print("Raster Metadata not yet implemented")
+    
+    def retrieve_dwd_raster(self,year,month,to_netcdf=False):
+        """ Retrieves DWD Raster data
+            year:  can be a single year or a list with starting year and end year;
+                   [2000,2010] means download data from 2000 to 2010
+            month: can be a single month or a list with starting month and end month
+                   [1,4] means download data from January to February
+            to_netcdf: True/False; True save data to a netCDF File -- Not Yet implemented!! --
+        """
+
+        if(isinstance(year, list)):
+            if(self.debug):
+                print(f'Retrieve year {year[0]} - {year[1]}')
+            year_arange = np.arange(year[0],year[1]+1)
+        else:
+            if(self.debug):
+                print(f"Retrieve year {year}")
+            year_arange = np.array([year])
+
+        if(isinstance(month, list)):
+            if(self.debug):
+                print(f'and month {month[0]} - {month[1]}')
+            month_arange = np.arange(month[0],month[1]+1)
+        else:
+            if(self.debug):
+                print(f"and month {month}")
+            month_arange = np.array([month])
+        
+        # Are the pathes there
+        check_create_dir(self.pathdlocal)
+        os.chdir(self.pathdlocal)
+
+        if(to_netcdf):
+            check_create_dir(self.pathdlocaltmp)
+            os.chdir(self.pathdlocaltmp)
+
+        metaftp = cftp(SERVERNAME)
+        metaftp.open_ftp()
+        metaftp.cwd_ftp(self.pathremote)
+
+        ii = 0
+        i_tot = len(year_arange)*len(month_arange)
+        not_in_list = []
+
+        for tyear in year_arange:
+            for tmonth in month_arange:
+                update_progress(ii/i_tot)
+                ii = ii + 1
+                filename = self.create_raster_filename(tyear,tmonth)
+                print(filename)
+
+                if(self.debug):
+                    print(f"Retrieve: {self.pathremote+filename}")
+
+                try:
+                    if(self.par in RASTERMONTHSUB):
+                        metaftp.save_file(filename,filename[7:])
+                    else:
+                        metaftp.save_file(filename,filename)
+                except:
+                    print(f"{self.pathremote+filename} not found")
+                    not_in_list.append(self.pathremote+filename)
+                try:
+                    if(self.par in RASTERMONTHSUB):
+                        os.system('gunzip -f '+filename[7:])
+                    elif(self.par not in RASTERNCDICT): ### Files with nc ending are not needed to unzip
+                        os.system('gunzip -f '+filename)
+                except:
+                    print(f'{filename} could not gunziped --> Is gunzip installed on local machine?')
+                    print('Python intern gunzip not yet implemented!')
+
+        # attach all files which are not found
+        self.stations_not_found = not_in_list
+
+        metaftp.close_ftp()
+
+        os.chdir(self.home_dir)
+
+        os.chdir(self.home_dir)
+
+        if(to_netcdf):
+            try:
+                shutil.rmtree(self.pathdlocaltmp)
+            except OSError as e:
+                print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
+
 
     def retrieve_dwd_station(self,key_arr,to_sqlite=True):
         """ Retrieves DWD Station data 
@@ -256,7 +375,7 @@ class dow_handler(dict):
 
     def get_data(self,sqlexec,mask_fillVal=True):
         """ Get data according to sqlexec"""
-    
+
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
         con = sqlite3.connect(filename,uri=True)
@@ -338,7 +457,7 @@ class dow_handler(dict):
                 break
 
         # remove blanks from column names
-        columns = df_tmp.columns 
+        columns = df_tmp.columns
         replace_col = {}
         for column in columns:
             replace_col[column] = column.replace(' ','')
