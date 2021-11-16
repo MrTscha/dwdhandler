@@ -10,6 +10,7 @@ MAIN_FOLDER     = 'dwd_data/'
 METADATA_FOLDER = 'metadata/'
 STATION_FOLDER  = 'station_data/'
 RASTER_FOLDER   = 'raster_data/'
+NWP_FOLDER      = 'nwp_data/'
 SQLITEFILESTAT  = 'DWD_STATION.sqlite'
 
 # This is needed for raster data, which is in month subdirectories
@@ -21,6 +22,22 @@ RASTERNCDICT   = ['Project_TRY','hyras_de']
 
 RASTERMONTHDICT = ['01_Jan','02_Feb','03_Mar','04_Apr','05_May','06_Jun',
                    '07_Jul','08_Aug','09_Sep','10_Oct','11_Nov','12_Dec']
+
+# NWP name dict
+NWPNAMEDICT = {'icon':'global',
+               'icon-d2':'germany',
+               'tot_prec':'single-level',
+               'qv':'model-level',
+               'omega':'pressure-level'
+              }
+
+NWPGRIDCHECK = ['regular-lat-lon','icosahedral']
+
+# maximum levels
+NWPMAXMOLEV = 65
+
+# pressure levels
+NWPPRESLEV = [1000,975,950,850,700,600,500,400,300,250,200]
 
 TIME_RESOLUTION_MAP = {
     'hourly': [['air_temperature',
@@ -83,6 +100,15 @@ TIME_RASTER_MAP = {
                ],
                ['recent']
               ]
+}
+
+NWP_DATA_MAP = {
+    'icon':[['tot_prec','omega','qv'],
+            ['00']
+           ],
+    'icon-d2':[['tot_prec','omega','qv'],
+           ['00']]
+
 }
 
 RASTER_CONVERSATION_MAP ={

@@ -18,7 +18,7 @@ import sqlite3
 import numpy as np
 
 # local modules
-from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_RASTER_GERM
+from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM
 from .constants.filedata import *
 from .constants.constpar import FILLVALUE
 from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
@@ -31,6 +31,7 @@ class dow_handler(dict):
                  resolution='hourly',
                  base_dir=os.getcwd()+'/'+MAIN_FOLDER,
                  period='recent',
+                 nwpgrid='regular-lat-lon',
                  local_time = False,
                  date_check = None,
                  debug = False
@@ -54,6 +55,7 @@ class dow_handler(dict):
         self.date_check = date_check
         self.resolution = resolution
         self.base_dir   = base_dir
+        self.nwpgrid    = nwpgrid
         # store "Home" Directory
         self.home_dir   = os.getcwd()  ### TODO: Das geht hier vlt nicht so einfach... beißt sich mit base_dir und dem wechseln in die Verzeichnisse
         self.tmp_dir    = 'tmp{}/'.format(datetime.datetime.now().strftime('%s'))
@@ -81,6 +83,8 @@ class dow_handler(dict):
             time_check_map = TIME_RESOLUTION_MAP
         elif(self.dtype == 'raster'):
             time_check_map = TIME_RASTER_MAP
+        elif(self.dtype == 'nwp'):
+            time_check_map = NWP_DATA_MAP
 
         check = time_check_map[self.resolution]
 
@@ -91,6 +95,12 @@ class dow_handler(dict):
                 f"Please check again:\n"
                 f"{time_check_map}" ### !!! >>TS TODO introduce better print function !!! <<TS###
             )
+
+        if(self.dtype):
+            if(self.nwpgrid not in NWPGRIDCHECK):
+                raise NameError(
+                    f'Wrong nwp grid! {self.nwpgrid} is not valid'
+                )
 
     def create_dirs(self):
         """
@@ -115,6 +125,16 @@ class dow_handler(dict):
             self.pathdlocal = self.base_dir+RASTER_FOLDER+f'{self.par}/'
             # create temp directory to avoid clashes of data streams
             self.pathdlocaltmp = self.base_dir+self.tmp_dir
+        elif(self.dtype == 'nwp'):
+            # create local location to save data description
+            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'raster_{self.resolution}_{self.par}/'
+            # create path on remote server of metadata and data
+            self.pathremote = SERVERPATH_NWP+f'{self.resolution}/grib/{self.period}/{self.par}/'
+            # create local data to save data
+            self.pathdlocal = self.base_dir+NWP_FOLDER+f'/{self.period}/{self.par}/'
+            # create temp directory to avoid clashes of data streams
+            self.pathdlocaltmp = self.base_dir+self.tmp_dir
+
 
     def get_metadata(self):
         """ Gets Metadata of data """
@@ -173,6 +193,19 @@ class dow_handler(dict):
                 cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
             return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
 
+    def create_nwp_filename(self,hour,mlayer=NWPMAXMOLEV,player=1000):
+        """ Creates file location on ftp nwp data """
+
+        date = datetime.datetime.now().strftime('%Y%m%d')
+        date = f'{date}{self.period}'
+        lvllayer = NWPNAMEDICT[self.par]
+        if(lvllayer == 'single-level'):
+            return f'{self.resolution}_{NWPNAMEDICT[self.resolution]}_{self.nwpgrid}_{lvllayer}_{date}_{hour:03d}_2d_{self.par}.grib2.bz2'
+        elif(lvllayer == 'model-level'):
+            return f'{self.resolution}_{NWPNAMEDICT[self.resolution]}_{self.nwpgrid}_{lvllayer}_{date}_{hour:03d}_{mlayer}_{self.par}.grib2.bz2'
+        elif(lvllayer == 'pressure-level'):
+            return f'{self.resolution}_{NWPNAMEDICT[self.resolution]}_{self.nwpgrid}_{lvllayer}_{date}_{hour:03d}_{player}_{self.par}.grib2.bz2'
+
     def create_raster_filename(self,year,month):
         """ Creates file location on ftp for raster data """
 
@@ -191,7 +224,48 @@ class dow_handler(dict):
         """
 
         print("Raster Metadata not yet implemented")
-    
+
+    def get_nwp_metadata(self):
+        """ Get NWP Metadata 
+        """
+
+        print("NWP Metadata not yet implemented")
+
+    def retrieve_dwd_nwp(self,max_hour=48,**kwargs):
+        """ Retrieves DWD NWP data
+            max_hour: defines the maximum hour to get; default 48 hours
+        """
+
+        # Are the pathes there
+        check_create_dir(self.pathdlocal)
+        os.chdir(self.pathdlocal)
+
+        metaftp = cftp(SERVERNAME)
+        metaftp.open_ftp()
+        metaftp.cwd_ftp(self.pathremote)
+
+        ii = 0
+        i_tot = max_hour
+        not_in_list = []
+        for i in range(max_hour):
+                update_progress(i/i_tot)
+                filename = self.create_nwp_filename(i,**kwargs)
+
+                if(self.debug):
+                    print(f"Retrieve: {self.pathremote+filename}")
+
+                try:
+                        metaftp.save_file(filename,filename)
+                except:
+                    print(f"{self.pathremote+filename} not found")
+                    not_in_list.append(self.pathremote+filename)
+
+
+        metaftp.close_ftp()
+
+        os.chdir(self.home_dir)
+
+
     def retrieve_dwd_raster(self,year,month,to_netcdf=False):
         """ Retrieves DWD Raster data
             year:  can be a single year or a list with starting year and end year;
@@ -240,7 +314,6 @@ class dow_handler(dict):
                 update_progress(ii/i_tot)
                 ii = ii + 1
                 filename = self.create_raster_filename(tyear,tmonth)
-                print(filename)
 
                 if(self.debug):
                     print(f"Retrieve: {self.pathremote+filename}")
@@ -266,8 +339,6 @@ class dow_handler(dict):
         self.stations_not_found = not_in_list
 
         metaftp.close_ftp()
-
-        os.chdir(self.home_dir)
 
         os.chdir(self.home_dir)
 
