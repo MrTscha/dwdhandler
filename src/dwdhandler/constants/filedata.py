@@ -15,7 +15,7 @@ SQLITEFILESTAT  = 'DWD_STATION.sqlite'
 
 # This is needed for raster data, which is in month subdirectories
 RASTERMONTHSUB = ['air_temperature_max','air_temperature_mean',
-                  'air_temperature_min','precipitation','sunshine_duration']
+                  'air_temperature_min','precipitation','sunshine_duration','drought_index']
 
 # Raster is saved in netCDF File at DWD?
 RASTERNCDICT   = ['Project_TRY','hyras_de']
@@ -84,7 +84,7 @@ TIME_RASTER_MAP = {
     'monthly':[['air_temperature_max',
                'air_temperature_mean',
                'air_temperature_min',
-               'drougt_index',
+               'drought_index',
                'evapo_p',
                'evapo_r',
                'frost_depth',
@@ -115,7 +115,12 @@ RASTER_CONVERSATION_MAP ={
     'air_temperature_max':'air_temp_max',
     'air_temperature_min':'air_temp_min',
     'air_temperature_mean':'air_temp_mean',
-    'precipitation':'precipitation'
+    'precipitation':'precipitation',
+    'evapo_p':'evapo_p',
+    'evapo_r':'evapo_r',
+    'soil_moist':'soil_moist',
+    'frost_depth':'frost_depth',
+    'drought_index':'drought_index'
 }
 
 NAME_CONVERSATION_MAP = {

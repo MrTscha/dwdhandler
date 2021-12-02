@@ -11,6 +11,7 @@ Created on Thu Jun 08 17:45:40 2020
 #import system modules
 from sys import exit, float_repr_style, stdout
 import os
+from numpy.lib.arraysetops import isin
 import pandas as pd
 import datetime
 import shutil
@@ -20,7 +21,7 @@ import numpy as np
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM
 from .constants.filedata import *
-from .constants.constpar import FILLVALUE
+from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
 from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
 from .helper.ftp import cftp
 
@@ -206,18 +207,30 @@ class dow_handler(dict):
         elif(lvllayer == 'pressure-level'):
             return f'{self.resolution}_{NWPNAMEDICT[self.resolution]}_{self.nwpgrid}_{lvllayer}_{date}_{hour:03d}_{player}_{self.par}.grib2.bz2'
 
-    def create_raster_filename(self,year,month):
+    def create_raster_filename(self,year,month,readf=False,clim_mean=False):
         """ Creates file location on ftp for raster data """
 
-        if(self.par in RASTERNCDICT):
-            fil_ending = 'nc'
-        else:
-            fil_ending = 'asc.gz'
+        if(clim_mean):
+            # create end year of climate normal period
+            year_sec = year + 29
 
-        if(self.par in RASTERMONTHSUB):
-            return f'{RASTERMONTHDICT[month-1]}/grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.asc.gz'
+        if(self.par in RASTERNCDICT):
+            file_ending = 'nc'
+        elif(readf):
+            file_ending = 'asc'
         else:
-            return f'{self.par}'
+            file_ending = 'asc.gz'
+
+        if(readf and not clim_mean):
+            return f'grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.{file_ending}'
+        elif(readf and clim_mean):
+            return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
+        elif(clim_mean):
+            return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
+        elif(self.par in RASTERMONTHSUB):
+            return f'{RASTERMONTHDICT[month-1]}/grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.{file_ending}'
+        else:
+            return f'grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.{file_ending}'
 
     def get_raster_metadata(self):
         """ Get Raster Data Metadata
@@ -266,16 +279,24 @@ class dow_handler(dict):
         os.chdir(self.home_dir)
 
 
-    def retrieve_dwd_raster(self,year,month,to_netcdf=False):
+    def retrieve_dwd_raster(self,year,month,to_netcdf=False,clim_mean=False):
         """ Retrieves DWD Raster data
             year:  can be a single year or a list with starting year and end year;
                    [2000,2010] means download data from 2000 to 2010
+                   in case of clim_mean = True year can be either list or scalar value
+                   But in case of list only first entry will be used, so the scalar value
+                   or the first value of the list defines starting point of 30 year climate
+                   normal period. Valid as beginning year 1961, 1971, 1981, 1991
             month: can be a single month or a list with starting month and end month
                    [1,4] means download data from January to February
             to_netcdf: True/False; True save data to a netCDF File -- Not Yet implemented!! --
         """
 
-        if(isinstance(year, list)):
+        if(clim_mean and not isinstance(year,list)):
+            year_arange = [year]
+        elif(clim_mean and isinstance(year,list)):
+            year_arange = [year[0]]
+        elif(isinstance(year, list)):
             if(self.debug):
                 print(f'Retrieve year {year[0]} - {year[1]}')
             year_arange = np.arange(year[0],year[1]+1)
@@ -292,7 +313,13 @@ class dow_handler(dict):
             if(self.debug):
                 print(f"and month {month}")
             month_arange = np.array([month])
-        
+
+        if(clim_mean):
+            # save temporarly remote file location
+            pathremotetmp = self.pathremote
+            # replace resolution part with multi_annual
+            self.pathremote = self.pathremote.replace(f'{self.resolution}','multi_annual')
+
         # Are the pathes there
         check_create_dir(self.pathdlocal)
         os.chdir(self.pathdlocal)
@@ -313,21 +340,22 @@ class dow_handler(dict):
             for tmonth in month_arange:
                 update_progress(ii/i_tot)
                 ii = ii + 1
-                filename = self.create_raster_filename(tyear,tmonth)
+                filename = self.create_raster_filename(tyear,tmonth,clim_mean=clim_mean)
 
                 if(self.debug):
                     print(f"Retrieve: {self.pathremote+filename}")
 
                 try:
-                    if(self.par in RASTERMONTHSUB):
+                    if(self.par in RASTERMONTHSUB and not clim_mean):
                         metaftp.save_file(filename,filename[7:])
                     else:
                         metaftp.save_file(filename,filename)
                 except:
                     print(f"{self.pathremote+filename} not found")
                     not_in_list.append(self.pathremote+filename)
+
                 try:
-                    if(self.par in RASTERMONTHSUB):
+                    if(self.par in RASTERMONTHSUB and not clim_mean):
                         os.system('gunzip -f '+filename[7:])
                     elif(self.par not in RASTERNCDICT): ### Files with nc ending are not needed to unzip
                         os.system('gunzip -f '+filename)
@@ -337,6 +365,9 @@ class dow_handler(dict):
 
         # attach all files which are not found
         self.stations_not_found = not_in_list
+        if(clim_mean):
+            # reset remote path again
+            self.pathremote = pathremotetmp
 
         metaftp.close_ftp()
 
@@ -348,6 +379,162 @@ class dow_handler(dict):
             except OSError as e:
                 print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
+    def read_dwd_raster(self,year,month,netcdf=False,calc_dev=False,clim_mean=False,clim_year_s=None):
+        """ Read DWD Raster data
+            year:  can be a single year or a list with starting year and end year;
+                   [2000,2010] means download data from 2000 to 2010
+            month: can be a single month or a list with starting month and end month
+                   [1,4] means download data from January to February
+            netcdf: True/False; read data from netCDF File -- Not Yet implemented!! --
+            clim_mean: Reads climatic normal period --> first year of 30 year period must be given
+            calc_dev: Calculates deviation --> first year of 30 year period must be given
+        """
+
+        if(isinstance(year, list)):
+            if(self.debug):
+                print(f'Read year {year[0]} - {year[1]}')
+            year_arange = np.arange(year[0],year[1]+1)
+        else:
+            if(self.debug):
+                print(f"Read year {year}")
+            year_arange = np.array([year])
+
+        if(isinstance(month, list)):
+            if(self.debug):
+                print(f'and month {month[0]} - {month[1]}')
+            month_arange = np.arange(month[0],month[1]+1)
+        else:
+            if(self.debug):
+                print(f"and month {month}")
+            month_arange = np.array([month])
+
+        data_clim = []
+        if(clim_mean or calc_dev):
+            if(clim_year_s is None):
+                print(f"Please specify clim_year_s")
+                return
+
+            for tmonth in month_arange:
+                filename = self.create_raster_filename(clim_year_s,tmonth,readf=True,clim_mean=clim_mean)
+                # set climate normal years to class
+                self.clim_y_s = clim_year_s
+                self.clim_y_e = clim_year_s + 29
+                data_clim.append(self.read_raster_ascii(self.pathdlocal+filename))
+                #data_clim = self.read_raster_ascii(self.pathdlocal+filename)
+            data_clim = np.asarray(data_clim,dtype=np.float64)
+            data_clim = np.ma.masked_where(data_clim == self.missingval,data_clim)
+            if(not calc_dev):
+                if(self.par in RASTERFACTDICT.keys()):
+                    data_clim *= RASTERFACTDICT[self.par]
+                return data_clim
+
+        data_r = []
+        data_r_anom = [] # !! TODO! Add climate normal periods to calculate deviations
+        i_tot = len(year_arange)*len(month_arange)
+        lfirst = True ## needed to create multiarray in first place
+        ii = 0
+        for tyear in year_arange:
+            imonth = 0
+            for tmonth in month_arange:
+                filename = self.create_raster_filename(tyear,tmonth,readf=True)
+                if(netcdf):
+                    pass
+                else:
+                    data_tmp = self.read_raster_ascii(self.pathdlocal+filename)
+                    try:
+                        #data_r.append(self.read_raster_ascii(self.pathdlocal+filename))
+                        data_tmp = self.read_raster_ascii(self.pathdlocal+filename)
+                    except:
+                        #data_r.append(np.full((self.rnrows,self.rncols),self.missingval))
+                        data_tmp = np.full((self.rncols,self.rnrows),self.missingval)
+
+                data_tmp = np.ma.masked_where(data_tmp == self.missingval, data_tmp)
+
+                if(lfirst):
+                    data_r = np.full((i_tot,self.rncols,self.rnrows),self.missingval)
+                    if(calc_dev):
+                        data_r_anom = np.full((i_tot,self.rncols,self.rnrows),self.missingval)
+                    lfirst = False
+                data_r[ii] = data_tmp
+
+                if(calc_dev):
+                    data_r_anom[ii] = data_clim[imonth] - data_r[ii]
+
+                imonth += 1
+                ii += 1
+
+        # mask data with Fill Value
+        data_r_m = np.ma.masked_where(data_r==self.missingval,data_r)
+        if(calc_dev):
+            data_r_anom_m = np.ma.masked_where(data_r_anom==self.missingval,data_r_anom)
+
+        # is it necessary to multiply data with a factor?
+        if(self.par in RASTERFACTDICT.keys()):
+            data_r_m *= RASTERFACTDICT[self.par]
+            if(calc_dev):
+                data_r_anom_m *= RASTERFACTDICT[self.par]
+
+        if(calc_dev):
+            return data_r_m, data_r_anom_m
+        else:
+            return data_r_m
+
+    def read_raster_ascii(self,filename):
+        """ Reads ASCII data from DWD Raster data
+            Saves lower left and right corner to class
+            Saves grid cell size to class
+            number of rows and columns
+        """
+
+        if(self.debug):
+            print(f'Read\n{filename}')
+
+        with open(filename) as f:
+            content = f.readlines()
+
+        # safe number of columns and rows
+        self.rncols = int(content[0].split()[1])
+        self.rnrows = int(content[1].split()[1])
+
+        # safe lower left and lower right corner
+        self.xllcorner = float(content[2].split()[1])
+        self.yllcorner = float(content[3].split()[1])
+
+        # safe cell size 
+        self.rcellsize = float(content[4].split()[1])
+
+        # safe missing value
+        self.missingval = float(content[5].split()[1])
+
+        self.crs_in = ASCIIRASCRS
+
+        # create data array
+        data = []
+
+        # parse each line, skip header
+        for line in content[6:]: # skip header
+            data.append(line.split())  # splits whitespace and appends row to data
+
+        if(self.debug):
+            print("File props")
+            print(f"ncols: {self.rncols}")
+            print(f"nrows: {self.rnrows}")
+            print(f"xll: {self.xllcorner}")
+            print(f"yll: {self.yllcorner}")
+            print(f"cellsize: {self.rcellsize}")
+            print(f"fillVal: {self.missingval}")
+
+        # convert to float
+        [[float(y) for y in x] for x in data]
+
+        # convert data to numpy arr
+        new_data = [[float(string) for string in inner] for inner in data]
+        np_data = np.asarray(new_data)
+
+        # data is upside down --> flip it and transpose
+        np_data = np_data[::-1,:].T
+
+        return np_data
 
     def retrieve_dwd_station(self,key_arr,to_sqlite=True):
         """ Retrieves DWD Station data 
