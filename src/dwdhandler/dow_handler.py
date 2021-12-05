@@ -17,6 +17,8 @@ import datetime
 import shutil
 import sqlite3
 import numpy as np
+from pyproj import Proj
+from pyproj import Transformer
 
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM
@@ -458,7 +460,7 @@ class dow_handler(dict):
                 data_r[ii] = data_tmp
 
                 if(calc_dev):
-                    data_r_anom[ii] = data_clim[imonth] - data_r[ii]
+                    data_r_anom[ii] = data_r[ii] - data_clim[imonth]
 
                 imonth += 1
                 ii += 1
@@ -478,6 +480,60 @@ class dow_handler(dict):
             return data_r_m, data_r_anom_m
         else:
             return data_r_m
+
+    def set_raster_grid(self):
+        """ Creates grid with lon lat for DWD ASCII Grid"""
+
+        # Check first if data was read
+        try:
+            self.xllcorner
+        except:
+            print("First read raster data with:")
+            print("dow_handler.read_dwd_raster()")
+            return
+
+        if(self.debug):
+            print("Create Grid")
+        self.create_grid()
+
+    def create_grid(self):
+        """ Returns four arrays with 1D x-y and 2D xx-yy coordinates
+            uses projection of raster and project to lon lat
+        """
+
+        inProj  = Proj({'init': f'{self.crs_in}'})
+        outProj = Proj({'init': 'epsg:4326'})
+
+        transformer = Transformer.from_proj(inProj,outProj)
+
+        transform = transformer.transform
+
+        grid_x = np.zeros((self.rncols))
+        grid_y = np.zeros((self.rnrows))
+
+        for ii in range(self.rncols):
+            grid_x[ii] = self.xllcorner + self.rcellsize * ii
+
+        for ii in range(self.rnrows):
+            grid_y[ii] = self.yllcorner + self.rcellsize * ii
+
+        lons = np.zeros((self.rncols,self.rnrows))
+        lats = np.zeros((self.rncols,self.rnrows))
+
+        
+        # Fill 2D lon lat arrays with values
+        for ii in range(self.rncols):
+            for jj in range(self.rnrows):
+                #tmp_lon, tmp_lat = transform(grid_x[ii],grid_y[jj])
+                lons[ii,jj], lats[ii,jj] = transform(grid_x[ii],grid_y[jj])
+
+            update_progress(ii/self.rncols)
+
+        self.gridx = grid_x 
+        self.gridy = grid_y
+
+        self.rlons = lons
+        self.rlats = lats
 
     def read_raster_ascii(self,filename):
         """ Reads ASCII data from DWD Raster data
