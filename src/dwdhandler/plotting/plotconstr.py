@@ -103,6 +103,21 @@ class plot_handler(dict):
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_p'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_r'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'cwb'                 :{'abs':
+                                          {'vmax':300.0,'vmin':-300.0,'vdd':20},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           }
         }
         # title
@@ -123,6 +138,18 @@ class plot_handler(dict):
                                     'abs'  :'$P_{mean}$',
                                     'dev'  :'$P_{mean}$',
                                     'short':'Niederschlagssumme'},
+            'evapo_p'             :{'long' :'Potentielle Verdunstung [{}]'.format(self.unit_dict['evapo_p']),
+                                    'abs'  :'$evap_{mean}$',
+                                    'dev'  :'$evap_{mean}$',
+                                    'short':'Pot. Verdunstung'},
+            'evapo_r'             :{'long' :'Reale Verdunstung [{}]'.format(self.unit_dict['evapo_r']),
+                                    'abs'  :'$evar_{mean}$',
+                                    'dev'  :'$evar_{mean}$',
+                                    'short':'Reale Verdunstung'},
+            'cwb'                 :{'long' :'Klimatische Wasserbilanz [{}]'.format(self.unit_dict['cwb']),
+                                    'abs'  :'$KWB_{mean}$',
+                                    'dev'  :'$KWB_{mean}$',
+                                    'short':'Klimatische Wasserbilanz'},
         }
 
 
