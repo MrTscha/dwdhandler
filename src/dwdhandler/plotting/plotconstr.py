@@ -201,6 +201,122 @@ class plot_handler(dict):
 
         return im
 
+    def plot_raster_year_array(self,lons,lats,data_in,year_arr,varp,
+                               columns=5,
+                               ptype='abs',
+                               dmean=False,
+                               pcmap=None,
+                               pextend=None,
+                               psubtitle=None,
+                               plevel=None,
+                               dsource=True,
+                               save_pref=None,
+                               **kwargs):
+        """Plots for each year, where columns are specified and rows are calculated automatically 
+           data_in: 3D array of data;
+           year: Year which is plotted
+           varp: Variable which is plotted --> same name as retrieved from DWD
+           ptype: ['abs' or 'dev'] denotes type of data absolute or deviation. Deviation must contain 
+                  Devation in data_in. This only handels cmap title and so on
+           dmean: display mean value of each month within plot
+        """
+
+        # calculate columns
+        total_years = len(year_arr)
+
+        if(total_years != data_in.shape[0]):
+            print("first index of data has not the same length as year array")
+            return
+
+        rows = int(total_years / columns) 
+        # add one row if there is a rest in division
+        if(total_years % columns != 0):
+            rows += 1
+
+        # total count of subplots 
+        tot_count = rows*columns
+
+        if(self.debug):
+            print(f'Total years: {total_years}, columns: {columns}, rows: {rows}')
+
+        fig, axs = plt.subplots(rows,columns, figsize=(columns*2,rows*2),
+        #fig, axs = plt.subplots(rows,columns, figsize=(10,8),
+                                subplot_kw={'projection':ccrs.PlateCarree()})
+
+        k = 0
+        i = 0
+        j = 0
+        if(pcmap is None):
+            pcmap = self.cmap_dict[varp][ptype]
+
+        if(pextend is None):
+            pextend = 'both'
+
+        if(plevel is None):
+            plevel = np.arange(self.vminmax_dict[varp][ptype]['vmin'],
+                               self.vminmax_dict[varp][ptype]['vmax']+self.vminmax_dict[varp][ptype]['vdd'],
+                               self.vminmax_dict[varp][ptype]['vdd'])
+
+        #for year in year_arr:
+        for j in range(tot_count):
+            ax = axs[i,k]
+
+            k += 1
+            if(k==columns):
+                k = 0
+                i += 1
+            
+            try:
+                titlestr = year_arr[j]
+                alpha = 1.0
+                im = self.plot_raster_data(lons, lats, data_in[j],
+                                           varp=varp, ptype=ptype,
+                                           ax=ax,title=titlestr,
+                                           dmean=dmean,cmap=pcmap,
+                                           extend=pextend,levels=plevel,
+                                           alpha=alpha,
+                                           **kwargs)
+                ax.axis('off')
+            except Exception as excp:
+                print(excp)
+                #data_tmp = np.full_like(data_in[0],-999.)
+                #alpha = 0.0
+                ## nasty bug in matplotlib as all masked values is not possible to plot --> blend out with alpha = 0.0
+                #self.plot_raster_data(lons,lats, data_tmp,
+                #                      varp=varp, ptype=ptype,
+                #                      ax=ax, title=titlestr,
+                #                      cmap=pcmap,extend=pextend,
+                #                      dmean=False,  # overwrite it anyway
+                #                      alpha=alpha,
+                #                      **kwargs)
+                ax.axis('off')
+
+            #j += 1
+        cax = plt.axes([0.93,0.25,0.01,0.35])
+        cb  = plt.colorbar(im,cax=cax)
+        cb.set_label(self.unit_dict[varp])
+
+        if(psubtitle is not None):
+            plt.suptitle(psubtitle)
+
+        # add dwd as source
+        if(dsource):
+            #sax = plt.axes([0.93,0.20,0.01,0.5])
+            plt.text(0.5,-0.1,'Datengrundlage:DWD',fontsize=10,transform=cax.transAxes)
+
+        if(save_pref is None):
+            save_pref = 'array'
+        #plt.tight_layout()
+        fig.subplots_adjust(wspace=0.0,bottom=0.0,top=0.92)
+        filename = f"{self.plot_dir}{save_pref}_year_{varp}_{year_arr[0]}_{year_arr[-1]}_{ptype}.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+        plt.savefig(filename,bbox_inches='tight',pad_inches=0)
+        #plt.show()
+        # After all close figure
+        plt.close(fig) 
+
     def plot_raster_year_tot(self,lons,lats,data_in,year,varp,
                              ptype='abs',
                              dmean=False,
@@ -212,11 +328,11 @@ class plot_handler(dict):
                              **kwargs):
         """Plots total year of raster data 
            data is plotted in two rows
-           data_in: 3D array of data; First index denotes month and can be less than 12
+           data_in: 3D array of data; First index denotes month and can be less than 12 but not greater than 12
            year: Year which is plottet
-           varp: Variable which is plottet --> same name as retrieved
+           varp: Variable which is plottet --> same name as retrieved from DWD
            ptype: ['abs' or 'dev'] denotes type of data absolute or deviation. Deviation must contain 
-                  Devation in its data. This only handels cmap title and so on
+                  Devation in data_in. This only handels cmap title and so on
            dmean: display mean value of each month within plot
         """
 
