@@ -59,6 +59,20 @@ TIME_RESOLUTION_MAP = {
                ['historical',
                'recent']
                ],
+    '10_minutes':[['air_temperature',
+                   'extreme_temperature',
+                   'extreme_wind',
+                   'precipitation',
+                   'solar',
+                   'wind',
+                   'wind_test' 
+                  ],
+                  [
+                    'historical',
+                    'now',
+                    'recent'
+                  ]
+               ],
     'daily':   [['kl',
                  'more_precip',
                  'soil_temperature',
@@ -152,5 +166,6 @@ NAME_CONVERSATION_MAP = {
     'monthly_meta':'Monatswerte',
     'meta_file_stationen':'_Beschreibung_Stationen.txt',
     'recent':'akt',
-    'historical':'hist'
+    'historical':'hist',
+    'now':'now'
 }

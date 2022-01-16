@@ -175,7 +175,13 @@ class dow_handler(dict):
 
     def create_station_metaname(self):
 
-        return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+        if(self.resolution == '10_minutes'):
+            if(self.period == 'now'):
+                return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+            else:
+                return f'zehn_min_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+        else:
+            return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
 
     def create_raster_metaname(self):
         return f'DESCRIPTION_gridsgermany_{self.resolution}_{self.par}_en.pdf'
@@ -226,9 +232,15 @@ class dow_handler(dict):
         if(readf and not clim_mean):
             return f'grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.{file_ending}'
         elif(readf and clim_mean):
-            return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
+            if((year > 1990) & (self.par == 'air_temperature_mean')): # This is problem on DWD server
+                return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}_{year_sec}_{month:02d}.{file_ending}'
+            else:
+                return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
         elif(clim_mean):
-            return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
+            if((year > 1990) & (self.par == 'air_temperature_mean')): # This is problem on DWD server
+                return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}_{year_sec}_{month:02d}.{file_ending}'
+            else:
+                return f'grids_germany_multi_annual_{RASTER_CONVERSATION_MAP[self.par]}_{year}-{year_sec}_{month:02d}.{file_ending}'
         elif(self.par in RASTERMONTHSUB):
             return f'{RASTERMONTHDICT[month-1]}/grids_germany_{self.resolution}_{RASTER_CONVERSATION_MAP[self.par]}_{year}{month:02d}.{file_ending}'
         else:
@@ -665,6 +677,8 @@ class dow_handler(dict):
 
         if(self.resolution == 'hourly'):
             strformat='%Y%m%d%H'
+        if(self.resolution == '10_minutes'):
+            strformat='%Y%m%d%H%M'
         elif(self.resolution == 'daily'):
             strformat='%Y%m%d'
         elif(self.resolution == 'monthly'):
@@ -700,6 +714,8 @@ class dow_handler(dict):
 
         if(self.resolution == 'hourly'):
             strformat='%Y%m%d%H'
+        elif(self.resolution == '10_minutes'):
+            strformat='%Y%m%d%H%M'
         elif(self.resolution == 'daily'):
             strformat='%Y%m%d'
         elif(self.resolution == 'monthly'):
