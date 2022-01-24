@@ -4,14 +4,19 @@ Created on Sat Jun 06 17:32:40 2021
 
 @author: Tobias Schad
 @email: tobias.schad@googlemail.com
-@description: Local file data constants """
+@description: Local file data constants. It also includes som basic constant regarding variables
+"""
 
 MAIN_FOLDER     = 'dwd_data/'
 METADATA_FOLDER = 'metadata/'
 STATION_FOLDER  = 'station_data/'
 RASTER_FOLDER   = 'raster_data/'
+REGAVG_FOLDER   = 'regavg/'
 NWP_FOLDER      = 'nwp_data/'
 SQLITEFILESTAT  = 'DWD_STATION.sqlite'
+
+# Available dtypes
+DTYPEAVAIL = ['station','raster','regavg','nwp']
 
 # This is needed for raster data, which is in month subdirectories
 RASTERMONTHSUB = ['air_temperature_max','air_temperature_mean',
@@ -22,6 +27,10 @@ RASTERNCDICT   = ['Project_TRY','hyras_de']
 
 RASTERMONTHDICT = ['01_Jan','02_Feb','03_Mar','04_Apr','05_May','06_Jun',
                    '07_Jul','08_Aug','09_Sep','10_Oct','11_Nov','12_Dec']
+
+# Regional Averages month vals
+REGAVGMONTHS  = [str(x).zfill(2) for x in range(1,13)]
+REGAVGSEASONS = ['winter','spring','summer','autumn']
 
 # NWP name dict
 NWPNAMEDICT = {'icon':'global',
@@ -92,6 +101,32 @@ TIME_RESOLUTION_MAP = {
                  'recent'
                 ]
                ]
+}
+
+REG_AVG_MAP = {
+    'annual':[[
+        'air_temperature_mean',
+        'frost_days',
+        'hot_days',
+        'ice_days',
+        'precipGE10mm_days',
+        'precipGE20mm_days',
+        'precipitation',
+        'summer_days',
+        'sunshine_duration',
+        'tropical_nights_tminGE20'
+    ], ['recent']
+    ],
+    'monthly': [[
+        'air_temperature_mean',
+        'precipitation',
+        'sunshine_duration'
+    ],['recent']],
+    'seasonal': [[
+        'air_temperature_mean',
+        'precipitation',
+        'sunshine_duration'
+    ],['recent']]
 }
 
 TIME_RASTER_MAP = {
@@ -168,4 +203,17 @@ NAME_CONVERSATION_MAP = {
     'recent':'akt',
     'historical':'hist',
     'now':'now'
+}
+
+REG_CONV_MAP = {
+    'air_temperature_mean':'tm',
+    'precipitation':'rr',
+    'sunshine_duration':'sd',
+    'frost_days':'tnas',
+    'hot_days':'txbs',
+    'ice_days':'txcs',
+    'precipGE10mm_days':'rrsfs',
+    'precipGE20mm_days':'rrsgs',
+    'summer_days':'txas',
+    'tropical_nights_tminGE20':'tnes'
 }

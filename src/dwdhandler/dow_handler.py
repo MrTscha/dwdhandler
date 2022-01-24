@@ -21,7 +21,7 @@ from pyproj import Proj
 from pyproj import Transformer
 
 # local modules
-from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM
+from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
 from .constants.filedata import *
 from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
 from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
@@ -46,8 +46,18 @@ class dow_handler(dict):
         local_time: translate to local time if wanted, otherwise time is in UTC
         date_check: check list of station data has to be data to this given date, if not specified today is used
         
-        dtype raster has to be set with period recent! 
+        dtype raster has to be set with period recent (which is default value)! 
+        dtype regavg has to be set with period recent (which is default value)!
         """
+
+        # very first check if dtype is available
+
+        if(dtype not in DTYPEAVAIL):
+            print(f'{dtype} is not available (at the moment)')
+            print(f'Available dtypes:')
+            for dtypeav in DTYPEAVAIL:
+                print(f'{dtypeav}')
+            return
 
         # store data
         self.dtype  = dtype
@@ -63,7 +73,10 @@ class dow_handler(dict):
         self.home_dir   = os.getcwd()  ### TODO: Das geht hier vlt nicht so einfach... beißt sich mit base_dir und dem wechseln in die Verzeichnisse
         self.tmp_dir    = 'tmp{}/'.format(datetime.datetime.now().strftime('%s'))
 
-        self.prepare_download()
+        icheck = self.prepare_download()
+
+        if(icheck != 0):
+            return
 
     def prepare_download(self):
         """ Prepare download data 
@@ -73,7 +86,10 @@ class dow_handler(dict):
 
         self.check_parameters()
 
-        self.create_dirs()
+        icheck = self.create_dirs()
+
+        if(icheck != 0):
+            return icheck 
         
         self.get_metadata()
 
@@ -88,6 +104,8 @@ class dow_handler(dict):
             time_check_map = TIME_RASTER_MAP
         elif(self.dtype == 'nwp'):
             time_check_map = NWP_DATA_MAP
+        elif(self.dtype == 'regavg'):
+            time_check_map = REG_AVG_MAP
 
         check = time_check_map[self.resolution]
 
@@ -130,14 +148,27 @@ class dow_handler(dict):
             self.pathdlocaltmp = self.base_dir+self.tmp_dir
         elif(self.dtype == 'nwp'):
             # create local location to save data description
-            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'raster_{self.resolution}_{self.par}/'
+            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'nwp_{self.resolution}_{self.par}/'
             # create path on remote server of metadata and data
             self.pathremote = SERVERPATH_NWP+f'{self.resolution}/grib/{self.period}/{self.par}/'
             # create local data to save data
             self.pathdlocal = self.base_dir+NWP_FOLDER+f'/{self.period}/{self.par}/'
             # create temp directory to avoid clashes of data streams
             self.pathdlocaltmp = self.base_dir+self.tmp_dir
-
+        elif(self.dtype == 'regavg'):
+            # create local location to save data description
+            self.pathmlocal = self.base_dir+METADATA_FOLDER+f'regavg_{self.resolution}_{self.par}/'
+            # create path on remote server of metadata and data
+            self.pathremote = SERVERPATH_REG_GERM+f'{self.resolution}/{self.par}/'
+            # create local data to save data
+            self.pathdlocal = self.base_dir+REGAVG_FOLDER+f'/{self.resolution}/{self.par}/'
+            # create temp directory to avoid clashes of data streams
+            self.pathdlocaltmp = self.base_dir+self.tmp_dir
+        else: # default
+            print(f'{self.dtype} is not defined in create directories. Stop')
+            return -1 
+        
+        return 0
 
     def get_metadata(self):
         """ Gets Metadata of data """
@@ -146,6 +177,12 @@ class dow_handler(dict):
             self.get_station_metadata()
         elif(self.dtype == 'raster'):
             self.get_raster_metadata()
+        elif(self.dtype == 'nwp'):
+            self.get_nwp_metadata()
+        elif(self.dtype == 'regavg'):
+            self.get_regavg_metadata()
+        else:
+            print(f'Metadata retrieval for {self.dtype} not found')
     
     def get_station_metadata(self):
         """ Get Station Metadata
@@ -185,6 +222,16 @@ class dow_handler(dict):
 
     def create_raster_metaname(self):
         return f'DESCRIPTION_gridsgermany_{self.resolution}_{self.par}_en.pdf'
+
+    def create_regavg_filename(self,time):
+        """Create file name of regional averages
+           str(time): defines time index --> month, seasonal or year;
+                      example: month  time = '01' or time = '02' ...
+                               seasonal time = 'autumn' or time = 'spring' ...
+                               year   time = 'year'
+        """
+
+        return f'regional_averages_{REG_CONV_MAP[self.par]}_{time}.txt'
 
     def create_station_filename(self,key):
         """ Creates file location on ftp """
@@ -252,6 +299,13 @@ class dow_handler(dict):
 
         print("Raster Metadata not yet implemented")
 
+    def get_regavg_metadata(self):
+        """ Get Regional Averages Data Metadata
+        """
+
+        if(self.debug == True):
+            print("Regional Average Metadata not yet available on homepage")
+
     def get_nwp_metadata(self):
         """ Get NWP Metadata 
         """
@@ -292,6 +346,46 @@ class dow_handler(dict):
 
         os.chdir(self.home_dir)
 
+    def retrieve_dwd_regavg(self):
+        """Retrieves DWD regional average data
+           Regional Averages are always retrieved als complete package!
+           for example self.resolution = 'monthly' downloads 12 month
+           for example self.resolution = 'seasonal' downloads 4 seasons ( no not the four seasons total Landscaping )
+           for example self.resolution = 'annual' downloads yearly values
+           The data is summed up in one file each at DWD. So yearly will deliver on pandas dataframe
+        """
+
+        filenlist = []
+        if(self.resolution == 'monthly'):
+            for month in REGAVGMONTHS:
+                filenlist.append(self.create_regavg_filename(month))
+        elif(self.resolution == 'seasonal'):
+            for season in REGAVGSEASONS:
+                filenlist.append(self.create_regavg_filename(season))
+        elif(self.resolution == 'annual'):
+            filenlist.append(self.create_regavg_filename('year'))
+
+        # Are the pathes there
+        check_create_dir(self.pathdlocal)
+        # Change into directory
+        os.chdir(self.pathdlocal)
+
+        # Log in to ftp server
+        metaftp = cftp(SERVERNAME)
+        metaftp.open_ftp()
+        # change to remote directory
+        metaftp.cwd_ftp(self.pathremote)
+
+        # download files listed in filenlist
+        for filename in filenlist:
+            if(self.debug):
+                print(f'Retrieve: {self.pathremote+filename}')
+            metaftp.save_file(filename,filename)
+
+        # close ftp connection
+        metaftp.close_ftp()
+
+        os.chdir(self.home_dir)
 
     def retrieve_dwd_raster(self,year,month,to_netcdf=False,clim_mean=False):
         """ Retrieves DWD Raster data
@@ -392,6 +486,40 @@ class dow_handler(dict):
                 shutil.rmtree(self.pathdlocaltmp)
             except OSError as e:
                 print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
+
+    def read_dwd_regavg(self):
+        """ Reads DWD Raster data
+            data is read as one pandas DataFrame
+        """
+
+        if(self.resolution == 'annual'):
+            # create filename
+            filename = self.create_regavg_filename('year')
+            # read data and skipping first line
+            df_out = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+            df_out.index = pd.to_datetime(df_out['Jahr'],format='%Y')
+            df_out.index.name = 'Jahr'
+            # Jahr are two columns in dataset, so drop the first one because it is an index
+            # drop second one because it is obsolet
+            df_out.drop(columns=['Jahr','Jahr.1'],inplace=True)
+        elif(self.resolution == 'seasonal'):
+
+            for season in REGAVGSEASONS:
+                # create filename
+                filename = self.create_regavg_filename(season)
+                # read data and skipping first line
+                df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                df_tmp.rename(columns={season:'season'},inplace=True)
+                try:
+                    df_out = pd.concat([df_out,df_tmp])
+                except:
+                    df_out = df_tmp.copy()
+
+        else:
+            print(f'{self.resolution} is unknown. Not data to return')
+            return
+
+        return df_out
 
     def read_dwd_raster(self,year,month,netcdf=False,calc_dev=False,clim_mean=False,clim_year_s=None):
         """ Read DWD Raster data

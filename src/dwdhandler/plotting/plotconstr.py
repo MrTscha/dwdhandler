@@ -59,7 +59,10 @@ class plot_handler(dict):
         self.unit_dict = {
             'air_temperature_max':'$\degree$C',
             'air_temperature_mean':'$\degree$C',
+            'air_temperature':'$\degree$C',
             'air_temperature_min':'$\degree$C',
+            'pressure':'hPa',
+            'humidity':'%',
             'precipitation':'mm',
             'evapo_p':'mm',
             'evapo_r':'mm',
@@ -405,3 +408,19 @@ class plot_handler(dict):
         plt.savefig(filename,bbox_inches='tight')
         # After all close figure
         plt.close(fig) 
+
+    def plot_station_meteo(self,df_in,var_plot=['TT_10'],var_cat=['air_temperature']):
+        """Plots simple station meteogramm"""
+
+        tot_len = len(var_plot)
+        fig, ax = plt.subplots(tot_len,1,figsize=(10,6))
+
+        i = 0
+        for var, varc in zip(var_plot,var_cat):
+            df_in[var].plot(ax=ax[i])
+            ax[i].set_ylabel(self.unit_dict[varc])
+            if(i < tot_len-1):
+                ax[i].axes.get_xaxis().set_visible(False)
+            i += 1
+
+        plt.show()
