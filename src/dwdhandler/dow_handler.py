@@ -514,11 +514,30 @@ class dow_handler(dict):
                     df_out = pd.concat([df_out,df_tmp])
                 except:
                     df_out = df_tmp.copy()
-
+            df_out.index = pd.to_datetime(df_out['Jahr'],format='%Y')
+            df_out.index.name = 'Jahr'
+        elif(self.resolution == 'monthly'):
+            for month in REGAVGMONTHS:
+                #create filename
+                filename = self.create_regavg_filename(month)
+                # read data and skipping first line
+                df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                try:
+                    df_out = pd.concat([df_out,df_tmp])
+                except:
+                    df_out = df_tmp.copy()
+            df_out.index = pd.to_datetime(df_out.apply(lambda row: f'{int(row.Jahr)}-{int(row.Monat)}-01', axis=1))
+            df_out.index.name = 'Datum'
+            df_out.drop(columns=['Jahr','Monat'],inplace=True)
         else:
             print(f'{self.resolution} is unknown. Not data to return')
             return
 
+        # Last ; in data leads to this column, so try to drop it
+        try:
+            df_out.drop(columns=['Unnamed: 19'],inplace=True)
+        except:
+            pass
         return df_out
 
     def read_dwd_raster(self,year,month,netcdf=False,calc_dev=False,clim_mean=False,clim_year_s=None):
