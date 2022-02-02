@@ -195,3 +195,8 @@ def list_files(dir_in, ending='',only_files=False):
         r_files = [f for f in listdir(dir_in) if isfile(join(dir_in, f))]
 
     return r_files
+
+
+# math related
+def moving_average(x, w):
+    return np.ma.convolve(x, np.ma.ones(w), 'valid') / w

@@ -8,8 +8,14 @@ Created on Thu Dec 05 11:40:40 2021
 """
 
 #import system modules
+from sqlite3 import Timestamp
+from turtle import color
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.colors as mc
+import matplotlib.gridspec as gridspec
+import matplotlib as mpl
 import numpy as np
 import seaborn as sns
 
@@ -17,22 +23,27 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import cartopy.io.shapereader as shpreader
 
+from ..helper.hfunctions import moving_average
+
 # activate seaborn plotting settings
-sns.set()
+sns.set('talk')
+#sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'1.0'})
 sns.set_style("whitegrid", {'axes.grid': False})
-sns.set_context('talk')
+#sns.set_context('talk')
 
 class plot_handler(dict):
     def __init__(self,
                  plot_dir,
                  shape_dir=None,
                  shape_fil=None,
-                 debug=False):
+                 debug=False,
+                 creator=None):
         # safe init settings
         self.plot_dir = plot_dir
         self.shape_dir = shape_dir
         self.shape_fil = shape_fil
         self.debug     = debug
+        self.creator   = creator
 
 
         # Create month array
@@ -77,6 +88,10 @@ class plot_handler(dict):
             'air_temperature_min' :{'abs':cm.seismic,
                                    'dev':cm.seismic},
             'precipitation':{'abs':cm.viridis_r,
+                             'per':cm.PuOr,
+                             'dev':cm.PuOr},
+            'sunshine_duration':{'abs':cm.viridis_r,
+                             'per':cm.cividis,
                              'dev':cm.PuOr},
             'evapo_r'      :{'abs':cm.viridis_r,
                              'dev':cm.PuOr},
@@ -106,6 +121,42 @@ class plot_handler(dict):
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_p'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_r'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'cwb'                 :{'abs':
+                                          {'vmax':300.0,'vmin':-300.0,'vdd':20},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          }
+        }
+        self.vminmax_dict_regavgyear = {
+            'air_temperature_mean':{'abs':
+                                          {'vmax':20.0,'vmin':-20.0,'vdd':0.5},
+                                    'dev':
+                                          {'vmax':3.0, 'vmin':-3.0, 'vdd':0.1},
+                                          },
+            'precipitation'       :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':150.0, 'vmin':-150.0, 'vdd':5},
+                                          },
+            'sunshine_duration'   :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':150.0, 'vmin':-150.0, 'vdd':5},
                                           },
             'evapo_p'             :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
@@ -400,6 +451,7 @@ class plot_handler(dict):
         # add dwd as source
         if(dsource):
             plt.text(1.05,0.2,'Datengrundlage:DWD',fontsize=10,transform=ax.transAxes)
+        plt.text(1.048,0.2,f'Visualisierung: {self.creator}',fontsize=10,transform=ax.transAxes)
 
         filename = f"{self.plot_dir}{varp}_{year}_{ptype}.png"
 
@@ -424,3 +476,266 @@ class plot_handler(dict):
             i += 1
 
         plt.show()
+
+    def plot_regavg_year_tps(self,date_arr,temp,prec,sd,
+                             temp_dev,prec_dev,sd_dev,
+                             title=None):
+        """Plots DWD regional average evoluation
+           of given temperature, precipitation and sunduration array
+           and stripes (deviation), for precipitation and sun duration it will be calculated to percental deviation
+           date_arr: Date
+           temp:     temperature with same dimensionality as date_arr
+           prec:     precipitation with same dimensionality as date_arr
+           sd:       sun duration with same dimensionalty as date_arr
+           temp_dev: temperature deviation with same dimensionality as date_arr
+           prec_dev: precipitation deviation with same dimensionality as date_arr
+           sd_dev:   sun duration deviation with same dimensionalty as date_arr
+        """
+
+        fig, axs = plt.subplots(3,2,figsize=(14,10))
+
+        fsyl_size = 14
+        fs_cbar   = 12
+
+        # plot temperature
+        ax = axs[0,0]
+        ax.plot_date(date_arr,temp,'.',color='k')
+        tmp_arr = np.full_like(temp,-999.)
+        tmp_arr[4:] = moving_average(temp,5)
+        tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
+        ax.plot_date(date_arr,tmp_arr,'-',color='tomato')
+        ax.set_xticks([])
+        ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_ylabel('[$^\circ C$]',fontsize=fsyl_size)
+        ax = axs[0,1]
+        var_t = 'air_temperature_mean'
+        ptypet = 'dev'
+        cmap = self.cmap_dict[var_t][ptypet]
+        norm_size = [self.vminmax_dict_regavgyear[var_t][ptypet]['vmin'],self.vminmax_dict_regavgyear[var_t][ptypet]['vmax']]
+        normalize = self.make_stripe_plot(date_arr,temp_dev,ax,cmap,norm_size,lretnorm=True)
+        ax.set_xticks([])
+        ax.set_xlim(date_arr[0],date_arr[-1])
+
+        cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
+        cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
+        cbar.set_label(self.unit_dict[var_t],fontsize=fs_cbar)
+
+        # plot precipitation
+        ax = axs[1,0]
+        ax.plot_date(date_arr,prec,'.',color='k')
+        tmp_arr = np.full_like(temp,-999.)
+        tmp_arr[4:] = moving_average(prec,5)
+        tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
+        ax.plot_date(date_arr,tmp_arr,'-',color='royalblue')
+        ax.set_xticks([])
+        ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_ylabel('[mm]',fontsize=fsyl_size)
+        ax = axs[1,1]
+        var_t = 'precipitation'
+        ptypet = 'per'
+        cmap = self.cmap_dict[var_t][ptypet]
+        norm_size = [self.vminmax_dict_regavgyear[var_t][ptypet]['vmin'],self.vminmax_dict_regavgyear[var_t][ptypet]['vmax']]
+        # calculate percental deviation
+        prec_perc = (1.0 + (prec_dev/prec))*100.0
+        normalize = self.make_stripe_plot(date_arr,prec_perc,ax,cmap,norm_size,lretnorm=True)
+        ax.set_xticks([])
+        ax.set_xlim(date_arr[0],date_arr[-1])
+
+        cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
+        cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
+        cbar.set_label('%',fontsize=fs_cbar)
+
+        # plot sunshine duration
+        ax = axs[2,0]
+        ax.plot_date(date_arr,sd,'.',color='k')
+        tmp_arr = np.full_like(sd,-999.)
+        tmp_arr[4:] = moving_average(sd,5)
+        #print(sd)
+        tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
+        # to avoid error message replace mask with nan
+        tmp_arr = tmp_arr.filled(np.nan)
+        ax.plot_date(date_arr,tmp_arr,'-',color='orange')
+        ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.tick_params(axis='x', labelrotation=45)
+        ax.set_ylabel('[h]',fontsize=fsyl_size)
+
+        ax = axs[2,1]
+        var_t = 'sunshine_duration'
+        ptypet = 'per'
+        cmap = self.cmap_dict[var_t][ptypet]
+        hex_list = ['#535353','#fcff59']
+        cmap = self.get_continuous_cmap(hex_list)
+        norm_size = [self.vminmax_dict_regavgyear[var_t][ptypet]['vmin'],self.vminmax_dict_regavgyear[var_t][ptypet]['vmax']]
+        # calculate percental deviation
+        sd_perc = (1.0 + (sd_dev/sd))*100.0
+        # to avoid error message replace mask with nan
+        sd_perc = sd_perc.filled(np.nan)
+        normalize = self.make_stripe_plot(date_arr,sd_perc,ax,cmap,norm_size,lretnorm=True)
+        ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.tick_params(axis='x', labelrotation=45)
+
+        cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
+        cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
+        cbar.set_label('%',fontsize=fs_cbar)
+
+        if(title is not None):
+            fig.suptitle(title,fontsize=18)
+
+        plt.show()
+
+    def plot_regavg_year(self,date_arr,data_arr,var_in,
+                         ptype='abs',pbar=False,pstripes=False,
+                         title=None):
+        """ Plots DWD regional average on a yearly resolution
+            date_arr: Date array (mostly only the year)
+            data_arr: Data array
+            ptype:    Type of Plot --> 'abs' (default) absolut values, 'dev' devation --> Data must be absolute values or deviation and is not calculated here!
+            pbar:     Plot data as bar plot (default False)
+            pstripes: Plot data as stripes (Ed Hawking stripes) plot (default False)
+            title:    Give the plot a title (default is None and therefore a string is generated from self.var_title_dict)
+        """
+
+        fig, ax = plt.subplots(1,1,figsize=(12,6)) 
+
+        norm_size = [self.vminmax_dict_regavgyear[var_in][ptype]['vmin'],self.vminmax_dict_regavgyear[var_in][ptype]['vmax']]
+        cmap = self.cmap_dict[var_in][ptype]
+        fs_cbar = 12
+        datemin = pd.Timestamp(f'{date_arr.year[0]  - 1}-01-01')
+        datemax = pd.Timestamp(f'{date_arr.year[-1] + 1}-01-01')
+        if(pbar):
+            normalize = self.make_bar_plot(date_arr,data_arr,ax,norm_size,cmap,lretnorm=True)
+            cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(1.0,0.5))
+            cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
+            cbar.set_label(self.unit_dict[var_in],fontsize=fs_cbar)
+            ax.grid(False)
+            ax.grid(True,linestyle='--',which='major',axis='y',linewidth=2,color='black',alpha=0.5)
+            ax.set_xlim(datemin, datemax)
+            labellingFormat=mpl.dates.DateFormatter("%Y")#b refers to month,y refers to year
+            ax.xaxis.set_major_formatter(labellingFormat)
+            majorTicks=mpl.dates.YearLocator(5) #every 4th year, 1st month, 1st day
+            ax.xaxis.set_major_locator(majorTicks)
+            for label in ax.get_xticklabels():
+                label.set_rotation(45)
+
+            ax.text(1.03,0.125,'Daten: DWD',fontsize=8,transform=ax.transAxes)
+            ax.text(1.03,0.1,f'Visualisierung: {self.creator}',fontsize=8,transform=ax.transAxes)
+        elif(pstripes):
+            self.make_stripe_plot(date_arr,data_arr,ax,cmap,norm_size)
+            ax.set_xlim(datemin, datemax)
+
+            ax.text(1.01,0.125,'Daten: \nDWD',fontsize=8,transform=ax.transAxes)
+            ax.text(1.01,0.05,f'Visualisierung: \n{self.creator}',fontsize=8,transform=ax.transAxes)
+        else:
+            ax.axhline(0.0,color='grey',linestyle='--',alpha=0.7)
+            ax.plot_date(date_arr,data_arr,'-',color='k')
+            ax.set_ylabel(self.unit_dict[var_in]) 
+
+            ax.text(1.03,0.125,'Daten: \nDWD',fontsize=8,transform=ax.transAxes)
+            ax.text(1.03,0.05,f'Visualisierung: \n{self.creator}',fontsize=8,transform=ax.transAxes)
+
+        if(title is None):
+            title = self.var_title_dict[var_in]['long']
+
+        ax.set_title(title)
+        ax.set_xlabel('Jahr')
+
+        filename = f"{self.plot_dir}{varp}_{year}_{ptype}.png"
+        if(self.debug):
+            print(f"Save to: {filename}")
+        plt.savefig(filename,bbox_inches='tight',pad_inches=0)
+        #plt.show()
+        # After all close figure
+        plt.close(fig) 
+        plt.show()
+    
+    def make_bar_plot(self,date_in,data_in,ax_in,norm_size,cmap,lretnorm=False):
+        """ Makes bar plot with given input data
+        """
+
+        if(lretnorm):
+            colors,normalize = self.make_colors_norm(norm_size,cmap,data_in,lretnorm=lretnorm)
+        else:
+            colors = self.make_colors_norm(norm_size,cmap,data_in,lretnorm=lretnorm)
+        barplot = ax_in.bar(date_in,data_in,width=200.0,edgecolor='k')
+        for i in range(len(colors)):
+            barplot[i].set_color(colors[i])
+        ax_in.set_ylim(norm_size)
+        if(lretnorm):
+            return normalize
+
+    def make_stripe_plot(self,xval,yval,ax_in,cmap,norm_size,lretnorm=False):
+        """makes a stripe plot similar to Ed Hawkings warming stripes"""
+
+        if(lretnorm):
+            colors,normalize = self.make_colors_norm(norm_size,cmap,yval,lretnorm=lretnorm)
+        else:
+            colors = self.make_colors_norm(norm_size,cmap,yval,lretnorm=lretnorm)
+        for i in range(len(colors)):
+            ax_in.axvline(x=xval[i],color=colors[i],linewidth=5.0) # linewidth should be adabtable
+        # remove yticks
+        ax_in.set_yticks([])
+        ax_in.tick_params(axis='y',labelbottom=False) # turn off label
+        ax_in.grid(False)
+        if(lretnorm):
+            return normalize
+
+
+    def make_colors_norm(self,norm_size,cmap,data_in,lretnorm=False):
+        """Creates color array according to given cmap and normalization range
+           norm_size: list with two values (min, max)
+           cmap:      colormap
+           data_in:   data
+           returns list of colors
+        """
+
+        colors = []
+        normalize = mc.Normalize(norm_size[0],norm_size[1])
+        colors = [cmap(normalize(val)) for val in data_in]
+        if(lretnorm):
+            return colors, normalize
+        else:
+            return colors
+
+    def get_continuous_cmap(self, hex_list, float_list=None):
+        ''' creates and returns a color map that can be used in heat map figures.
+        If float_list is not provided, colour map graduates linearly between each color in hex_list.
+        If float_list is provided, each color in hex_list is mapped to the respective location in float_list. 
+        
+        Parameters
+        ----------
+        hex_list: list of hex code strings
+        float_list: list of floats between 0 and 1, same length as hex_list. Must start with 0 and end with 1.
+        
+        Returns
+        ----------
+        colour map'''
+        rgb_list = [self.rgb_to_dec(self.hex_to_rgb(i)) for i in hex_list]
+        if float_list:
+            pass
+        else:
+            float_list = list(np.linspace(0,1,len(rgb_list)))
+
+        cdict = dict()
+        for num, col in enumerate(['red', 'green', 'blue']):
+            col_list = [[float_list[i], rgb_list[i][num], rgb_list[i][num]] for i in range(len(float_list))]
+            cdict[col] = col_list
+        #cmp = mcolors.LinearSegmentedColormap('my_cmp', segmentdata=cdict, N=256)
+        cmp = mc.LinearSegmentedColormap('my_cmp', segmentdata=cdict, N=256)
+        return cmp
+    
+    def hex_to_rgb(self,value):
+        '''
+        Converts hex to rgb colours
+        value: string of 6 characters representing a hex colour.
+        Returns: list length 3 of RGB values'''
+        value = value.strip("#") # removes hash symbol if present
+        lv = len(value)
+        return tuple(int(value[i:i + lv // 3], 16) for i in range(0, lv, lv // 3))
+
+
+    def rgb_to_dec(self,value):
+        '''
+        Converts rgb to decimal colours (i.e. divides each value by 256)
+        value: list (length 3) of RGB values
+        Returns: list (length 3) of decimal values'''
+        return [v/256 for v in value]

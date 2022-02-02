@@ -487,9 +487,11 @@ class dow_handler(dict):
             except OSError as e:
                 print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
-    def read_dwd_regavg(self):
+    def read_dwd_regavg(self,cyears=1961,cyeare=1990):
         """ Reads DWD Raster data
             data is read as one pandas DataFrame
+            cyears: Start year of climate normal period (default 1961)
+            cyeare: End year of climate normal period (default 1990 )
         """
 
         if(self.resolution == 'annual'):
@@ -502,6 +504,11 @@ class dow_handler(dict):
             # Jahr are two columns in dataset, so drop the first one because it is an index
             # drop second one because it is obsolet
             df_out.drop(columns=['Jahr','Jahr.1'],inplace=True)
+            # create climate normal period 
+            df_clim = df_out[(df_out.index.year >= cyears) & (df_out.index.year <= cyeare)].mean(axis=0)
+            # calculate deviation
+            for key in df_out.keys():
+                df_out[f'{key}_dev'] = df_out[key] - df_clim[key]    
         elif(self.resolution == 'seasonal'):
 
             for season in REGAVGSEASONS:
@@ -510,6 +517,13 @@ class dow_handler(dict):
                 # read data and skipping first line
                 df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
                 df_tmp.rename(columns={season:'season'},inplace=True)
+                self.df_tmp = df_tmp
+                # create climate normal period 
+                df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0)
+                # calculate deviation
+                for key in df_tmp.keys():
+                    if(key not in ['season','Jahr']):
+                        df_tmp[f'{key}_dev'] = df_tmp[key] - df_clim[key]    
                 try:
                     df_out = pd.concat([df_out,df_tmp])
                 except:
@@ -522,6 +536,11 @@ class dow_handler(dict):
                 filename = self.create_regavg_filename(month)
                 # read data and skipping first line
                 df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                # create climate normal period 
+                df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0)
+                # calculate deviation
+                for key in df_tmp.keys():
+                    df_tmp[f'{key}_dev'] = df_tmp[key] - df_clim[key]    
                 try:
                     df_out = pd.concat([df_out,df_tmp])
                 except:
@@ -529,13 +548,14 @@ class dow_handler(dict):
             df_out.index = pd.to_datetime(df_out.apply(lambda row: f'{int(row.Jahr)}-{int(row.Monat)}-01', axis=1))
             df_out.index.name = 'Datum'
             df_out.drop(columns=['Jahr','Monat'],inplace=True)
+            df_out.sort_index(inplace=True)
         else:
             print(f'{self.resolution} is unknown. Not data to return')
             return
 
         # Last ; in data leads to this column, so try to drop it
         try:
-            df_out.drop(columns=['Unnamed: 19'],inplace=True)
+            df_out.drop(columns=['Unnamed: 19','Unnamed: 19_dev'],inplace=True)
         except:
             pass
         return df_out
