@@ -477,6 +477,43 @@ class plot_handler(dict):
 
         plt.show()
 
+    def plot_regavg_thermopluvio(self,date_arr,temp_dev,prec_dev,
+                                 title=None,
+                                 xlim=None,
+                                 ylim=None):
+        """
+           Plots Thermopluviogram of DWD regional average 
+           date_arr:  Date Array
+           temp_dev:  Temperature array containing deviation
+           prec_dev:  Precipitation array containing deviation
+           title:     Title (default: None)
+           xlim:      setting xlim (default: None --> -2.5,2.5)
+           ylim:      setting ylim (default: None --> -250,250)
+        """
+
+        fig, ax = plt.subplots(figsize=(10,8))
+
+        fsyl_size = 14
+        fs_cbar   = 12
+        fs_legend = 8
+        axlc      = 'k'
+        axla      = 0.7
+        axls      = '--'
+
+        ax.scatter(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],label=f'{date_arr[0].year} - {date_arr[len(date_arr)-2].year}')
+        ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}')
+
+        ax.axhline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
+        ax.axvline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
+
+        ax.set_xlim(-2.5,2.5)
+        ax.set_ylim(-250,250)
+
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
+
+        plt.show()
+
     def plot_regavg_year_tps(self,date_arr,temp,prec,sd,
                              temp_dev,prec_dev,sd_dev,
                              title=None):
@@ -496,14 +533,17 @@ class plot_handler(dict):
 
         fsyl_size = 14
         fs_cbar   = 12
+        fs_legend = 8
 
         # plot temperature
         ax = axs[0,0]
-        ax.plot_date(date_arr,temp,'.',color='k')
+        ax.plot_date(date_arr,temp,'.',color='k',label='Mitteltemperatur')
         tmp_arr = np.full_like(temp,-999.)
         tmp_arr[4:] = moving_average(temp,5)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
-        ax.plot_date(date_arr,tmp_arr,'-',color='tomato')
+        ax.plot_date(date_arr,tmp_arr,'-',color='tomato',label='Gleitendes Mittel (5j)')
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
         ax.set_xlim(date_arr[0],date_arr[-1])
         ax.set_ylabel('[$^\circ C$]',fontsize=fsyl_size)
@@ -522,11 +562,13 @@ class plot_handler(dict):
 
         # plot precipitation
         ax = axs[1,0]
-        ax.plot_date(date_arr,prec,'.',color='k')
+        ax.plot_date(date_arr,prec,'.',color='k',label='Niederschlagssumme')
         tmp_arr = np.full_like(temp,-999.)
         tmp_arr[4:] = moving_average(prec,5)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
-        ax.plot_date(date_arr,tmp_arr,'-',color='royalblue')
+        ax.plot_date(date_arr,tmp_arr,'-',color='royalblue',label='Gleitendes Mittel (5j)')
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
         ax.set_xlim(date_arr[0],date_arr[-1])
         ax.set_ylabel('[mm]',fontsize=fsyl_size)
@@ -547,14 +589,16 @@ class plot_handler(dict):
 
         # plot sunshine duration
         ax = axs[2,0]
-        ax.plot_date(date_arr,sd,'.',color='k')
+        ax.plot_date(date_arr,sd,'.',color='k',label='Sonnenscheindauer')
         tmp_arr = np.full_like(sd,-999.)
         tmp_arr[4:] = moving_average(sd,5)
         #print(sd)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
         # to avoid error message replace mask with nan
         tmp_arr = tmp_arr.filled(np.nan)
-        ax.plot_date(date_arr,tmp_arr,'-',color='orange')
+        ax.plot_date(date_arr,tmp_arr,'-',color='orange',label='Gleitendes Mittel (5j)')
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xlim(date_arr[0],date_arr[-1])
         ax.tick_params(axis='x', labelrotation=45)
         ax.set_ylabel('[h]',fontsize=fsyl_size)
@@ -581,7 +625,17 @@ class plot_handler(dict):
         if(title is not None):
             fig.suptitle(title,fontsize=18)
 
-        plt.show()
+        # final adjustments
+        plt.subplots_adjust(left=0.1, bottom=0.1, right=0.89, top=0.88, wspace=0.05, hspace=0.15) 
+
+        filename = f"{self.plot_dir}/regyear_temp_prec_sd.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+
+        plt.savefig(filename,bbox_inches='tight',pad_inches=0)
+        # close figure at the end
+        plt.close(fig)
 
     def plot_regavg_year(self,date_arr,data_arr,var_in,
                          ptype='abs',pbar=False,pstripes=False,
@@ -646,7 +700,6 @@ class plot_handler(dict):
         #plt.show()
         # After all close figure
         plt.close(fig) 
-        plt.show()
     
     def make_bar_plot(self,date_in,data_in,ax_in,norm_size,cmap,lretnorm=False):
         """ Makes bar plot with given input data
