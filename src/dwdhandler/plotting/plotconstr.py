@@ -478,6 +478,7 @@ class plot_handler(dict):
         plt.show()
 
     def plot_regavg_thermopluvio(self,date_arr,temp_dev,prec_dev,
+                                 stepwise=None,
                                  title=None,
                                  xlim=None,
                                  ylim=None):
@@ -486,6 +487,7 @@ class plot_handler(dict):
            date_arr:  Date Array
            temp_dev:  Temperature array containing deviation
            prec_dev:  Precipitation array containing deviation
+           stepwise:  step to combine years using the same --> for example 10 will do a 10 years step before changing color
            title:     Title (default: None)
            xlim:      setting xlim (default: None --> -2.5,2.5)
            ylim:      setting ylim (default: None --> -250,250)
@@ -499,8 +501,24 @@ class plot_handler(dict):
         axlc      = 'k'
         axla      = 0.7
         axls      = '--'
+        color_names = ['green', 'blue', 'cyan','lime','darkgreen','navy','red', 'plum', 'olivedrab', 'orangered', 'firebrick', 'saddlebrown', 'darkorange', 
+                       'gold','ligthcoral','purple']
 
-        ax.scatter(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],label=f'{date_arr[0].year} - {date_arr[len(date_arr)-2].year}')
+        # is a step given?
+        if(stepwise is not None):
+            steps = np.arange(round(date_arr.year[0],-1),round(date_arr.year[-2],-1)+stepwise,stepwise)
+            color_names = self.make_colors_norm(norm_size=[0,len(steps)],cmap=cm.plasma,data_in=np.arange(0,len(steps)+1))
+            for i in range(len(steps)-1):
+                cond = np.isin(date_arr.year,np.arange(steps[i],steps[i+1]))
+                if(steps[i+1] > date_arr.year[-2]):
+                    label = f'{steps[i]} - {date_arr.year[-2]}'
+                else:
+                    label = f'{steps[i]} - {steps[i+1]}'
+                ax.scatter(temp_dev[cond],prec_dev[cond],label=label,color=color_names[i])
+                print(steps[i],steps[i+1])
+        # no step given --> plot only last one with different colored marker
+        else:
+            ax.scatter(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],label=f'{date_arr[0].year} - {date_arr[len(date_arr)-2].year}')
         ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}')
 
         ax.axhline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
@@ -508,6 +526,9 @@ class plot_handler(dict):
 
         ax.set_xlim(-2.5,2.5)
         ax.set_ylim(-250,250)
+
+        ax.set_xlabel(self.unit_dict['air_temperature_mean'])
+        ax.set_ylabel(self.unit_dict['precipitation'])
 
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
