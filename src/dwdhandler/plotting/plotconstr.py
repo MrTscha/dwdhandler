@@ -16,6 +16,8 @@ import matplotlib.cm as cm
 import matplotlib.colors as mc
 import matplotlib.gridspec as gridspec
 import matplotlib as mpl
+from matplotlib.patches import Ellipse
+import matplotlib.transforms as transforms
 import numpy as np
 import seaborn as sns
 
@@ -481,7 +483,9 @@ class plot_handler(dict):
                                  stepwise=None,
                                  title=None,
                                  xlim=None,
-                                 ylim=None):
+                                 ylim=None,
+                                 ldraw_ell=False,
+                                 file_suffix=None):
         """
            Plots Thermopluviogram of DWD regional average 
            date_arr:  Date Array
@@ -491,6 +495,8 @@ class plot_handler(dict):
            title:     Title (default: None)
            xlim:      setting xlim (default: None --> -2.5,2.5)
            ylim:      setting ylim (default: None --> -250,250)
+           ldraw_ell: Draw ellipse around data points (default: False)
+           file_suffix: if a suffix has to be appended to standard filename regavg_thermopluviogram_{file_suffix}.png (default: None)
         """
 
         fig, ax = plt.subplots(figsize=(10,8))
@@ -501,31 +507,43 @@ class plot_handler(dict):
         axlc      = 'k'
         axla      = 0.7
         axls      = '--'
-        color_names = ['green', 'blue', 'cyan','lime','darkgreen','navy','red', 'plum', 'olivedrab', 'orangered', 'firebrick', 'saddlebrown', 'darkorange', 
-                       'gold','ligthcoral','purple']
 
         # is a step given?
         if(stepwise is not None):
             steps = np.arange(round(date_arr.year[0],-1),round(date_arr.year[-2],-1)+stepwise,stepwise)
+            # create colors from cmap
             color_names = self.make_colors_norm(norm_size=[0,len(steps)],cmap=cm.plasma,data_in=np.arange(0,len(steps)+1))
             for i in range(len(steps)-1):
-                cond = np.isin(date_arr.year,np.arange(steps[i],steps[i+1]))
                 if(steps[i+1] > date_arr.year[-2]):
+                    cond = np.isin(date_arr.year,np.arange(steps[i],date_arr.year[-1]))
                     label = f'{steps[i]} - {date_arr.year[-2]}'
                 else:
-                    label = f'{steps[i]} - {steps[i+1]}'
+                    cond = np.isin(date_arr.year,np.arange(steps[i],steps[i+1]))
+                    label = f'{steps[i]} - {steps[i+1]-1}'
                 ax.scatter(temp_dev[cond],prec_dev[cond],label=label,color=color_names[i])
-                print(steps[i],steps[i+1])
+                if(ldraw_ell):
+                    self.confidence_ellipse(temp_dev[cond],prec_dev[cond],ax,n_std=1.5,edgecolor=color_names[i])
+
+                if(self.debug):
+                    print(steps[i],steps[i+1])
         # no step given --> plot only last one with different colored marker
         else:
             ax.scatter(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],label=f'{date_arr[0].year} - {date_arr[len(date_arr)-2].year}')
-        ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}')
+            if(ldraw_ell):
+                self.confidence_ellipse(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],ax,n_std=1.5,edgecolor='k')
+        ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}',s=120)
 
         ax.axhline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
         ax.axvline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
 
-        ax.set_xlim(-2.5,2.5)
-        ax.set_ylim(-250,250)
+        if(xlim is None):
+            ax.set_xlim(-2.5,2.5)
+        else:
+            ax.set_xlim(xlim[0],xlim[-1])
+        if(ylim is None):
+            ax.set_ylim(-250,250)
+        else:
+            ax.set_ylim(ylim[0],ylim[1])
 
         ax.set_xlabel(self.unit_dict['air_temperature_mean'])
         ax.set_ylabel(self.unit_dict['precipitation'])
@@ -533,7 +551,23 @@ class plot_handler(dict):
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
 
-        plt.show()
+        if(title is not None):
+            fig.suptitle(title,fontsize=18)
+
+        # final adjustments
+        #plt.subplots_adjust(left=0.1, bottom=0.1, right=0.89, top=0.88, wspace=0.05, hspace=0.15) 
+
+        if(file_suffix is None):
+            filename = f"{self.plot_dir}/regyear_thermopluviogramm.png"
+        else:
+            filename = f"{self.plot_dir}/regyear_thermopluviogramm_{file_suffix}.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+
+        plt.savefig(filename,bbox_inches='tight')
+        # close figure at the end
+        plt.close(fig)
 
     def plot_regavg_year_tps(self,date_arr,temp,prec,sd,
                              temp_dev,prec_dev,sd_dev,
@@ -752,6 +786,58 @@ class plot_handler(dict):
         ax_in.grid(False)
         if(lretnorm):
             return normalize
+
+    def confidence_ellipse(self,x, y, ax, n_std=3.0, facecolor='none', **kwargs):
+        """
+        Create a plot of the covariance confidence ellipse of *x* and *y*.
+
+        Parameters
+        ----------
+        x, y : array-like, shape (n, )
+            Input data.
+
+        ax : matplotlib.axes.Axes
+            The axes object to draw the ellipse into.
+
+        n_std : float
+            The number of standard deviations to determine the ellipse's radiuses.
+
+        **kwargs
+            Forwarded to `~matplotlib.patches.Ellipse`
+
+        Returns
+        -------
+        matplotlib.patches.Ellipse
+        """
+        if(x.size != y.size):
+            raise ValueError("x and y must be the same size")
+
+        cov = np.cov(x, y)
+        pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+        # Using a special case to obtain the eigenvalues of this
+        # two-dimensionl dataset.
+        ell_radius_x = np.sqrt(1 + pearson)
+        ell_radius_y = np.sqrt(1 - pearson)
+        ellipse = Ellipse((0, 0), width=ell_radius_x * 2, height=ell_radius_y * 2,
+                          facecolor=facecolor, **kwargs)
+
+        # Calculating the stdandard deviation of x from
+        # the squareroot of the variance and multiplying
+        # with the given number of standard deviations.
+        scale_x = np.sqrt(cov[0, 0]) * n_std
+        mean_x = np.mean(x)
+
+        # calculating the stdandard deviation of y ...
+        scale_y = np.sqrt(cov[1, 1]) * n_std
+        mean_y = np.mean(y)
+
+        transf = transforms.Affine2D() \
+            .rotate_deg(45) \
+            .scale(scale_x, scale_y) \
+            .translate(mean_x, mean_y)
+
+        ellipse.set_transform(transf + ax.transData)
+        return ax.add_patch(ellipse)
 
 
     def make_colors_norm(self,norm_size,cmap,data_in,lretnorm=False):
