@@ -77,6 +77,7 @@ class plot_handler(dict):
             'pressure':'hPa',
             'humidity':'%',
             'precipitation':'mm',
+            'precipitation_p':'%',
             'evapo_p':'mm',
             'evapo_r':'mm',
             'cwb':'mm'
@@ -484,6 +485,7 @@ class plot_handler(dict):
                                  title=None,
                                  xlim=None,
                                  ylim=None,
+                                 pdiff=False,
                                  ldraw_ell=False,
                                  file_suffix=None):
         """
@@ -495,6 +497,7 @@ class plot_handler(dict):
            title:     Title (default: None)
            xlim:      setting xlim (default: None --> -2.5,2.5)
            ylim:      setting ylim (default: None --> -250,250)
+           pdiff:     if precipitation deviation is in percent
            ldraw_ell: Draw ellipse around data points (default: False)
            file_suffix: if a suffix has to be appended to standard filename regavg_thermopluviogram_{file_suffix}.png (default: None)
         """
@@ -533,20 +536,25 @@ class plot_handler(dict):
                 self.confidence_ellipse(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],ax,n_std=1.5,edgecolor='k')
         ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}',s=120)
 
-        ax.axhline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
         ax.axvline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
 
         if(xlim is None):
-            ax.set_xlim(-2.5,2.5)
-        else:
-            ax.set_xlim(xlim[0],xlim[-1])
+            xlim = self.even_lim_data(temp_dev)
+        ax.set_xlim(xlim[0],xlim[-1])
+
         if(ylim is None):
-            ax.set_ylim(-250,250)
-        else:
-            ax.set_ylim(ylim[0],ylim[1])
+            ylim = self.even_lim_data(prec_dev)
+            if(pdiff):
+                ylim[0] = 0
+        ax.set_ylim(ylim[0],ylim[1])
 
         ax.set_xlabel(self.unit_dict['air_temperature_mean'])
-        ax.set_ylabel(self.unit_dict['precipitation'])
+        if(pdiff):
+            ax.set_ylabel(self.unit_dict['precipitation_p'])
+            ax.axhline(100,color=axlc,zorder=0,alpha=axla,linestyle=axls)
+        else:
+            ax.set_ylabel(self.unit_dict['precipitation'])
+            ax.axhline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
 
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
@@ -786,6 +794,22 @@ class plot_handler(dict):
         ax_in.grid(False)
         if(lretnorm):
             return normalize
+    
+    def even_lim_data(self,data_in):
+        """ Makes even spaced limits for plotting
+        It searches for min/max value and then returns the negative and positive
+        value of the maximum absolut value
+        --> max 3.4 and min - 1.2 --> returns [-4,4]
+        data_in:      1D data array
+        """
+
+        min = np.floor(data_in.min())
+        max = np.ceil(data_in.max())
+
+        max = np.maximum(np.abs(min),np.abs(max))
+        max = np.ceil(max + data_in.std()*0.5)
+
+        return [-1 * max, max]
 
     def confidence_ellipse(self,x, y, ax, n_std=3.0, facecolor='none', **kwargs):
         """
