@@ -72,6 +72,8 @@ class dow_handler(dict):
         # store "Home" Directory
         self.home_dir   = os.getcwd()  ### TODO: Das geht hier vlt nicht so einfach... beißt sich mit base_dir und dem wechseln in die Verzeichnisse
         self.tmp_dir    = 'tmp{}/'.format(datetime.datetime.now().strftime('%s'))
+        # create table name for sqlite database
+        self.tabname = f"{self.par}_{self.resolution}"
 
         icheck = self.prepare_download()
 
@@ -930,7 +932,7 @@ class dow_handler(dict):
             df_test = pd.concat([df_old,df_in]).drop_duplicates().reset_index(drop=True)
             df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
             df_test.drop(columns='_merge',inplace=True)
-            df_test.to_sql(tabname, con, if_exists="append", index=False)
+            df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
             lnew = False
 
         except Exception as Excp:
@@ -938,10 +940,34 @@ class dow_handler(dict):
             print(Excp)
 
         if(lnew):
-            df_in.to_sql(tabname, con, index=False)
+            df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi')
 
         con.close()
 
+    def clean_database(self):
+        """ Cleans Database --> could be possible if multiple times data was added
+            Keeps the last entry
+        """
+
+        filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+
+        con = sqlite3.connect(filename,uri=True)
+
+        tabname = f"{self.par}_{self.resolution}"
+
+        sqlexc = f"DELETE FROM {tabname} "\
+                  "WHERE rowid NOT IN "\
+                  "(" \
+                  "SELECT min(rowid) "\
+                 f"FROM {tabname} "\
+                  "GROUP BY STATIONS_ID, MESS_DATUM )"
+
+        if(self.debug):
+            print("Clear database")
+
+        con.execute(sqlexc)
+
+        con.close()
 
     def get_station_df_csv(self,dir_in):
         """
