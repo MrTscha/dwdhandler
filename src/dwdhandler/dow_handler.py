@@ -9,7 +9,7 @@ Created on Thu Jun 08 17:45:40 2020
 """
 
 #import system modules
-from sys import exit, float_repr_style, stdout
+from sys import exit, float_repr_style, stdout, exc_info
 import os
 from numpy.lib.arraysetops import isin
 import pandas as pd
@@ -24,7 +24,7 @@ from pyproj import Transformer
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
 from .constants.filedata import *
 from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
-from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress
+from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress, write_sqlite
 from .helper.ftp import cftp
 
 class dow_handler(dict):
@@ -246,7 +246,7 @@ class dow_handler(dict):
             cvon = self.get_obj_station(key,obj='von').strftime('%Y%m%d')
             tbis = self.get_obj_station(key,obj='bis')
             if(tbis.year == datetime.datetime.now().year):
-                cbis = '{}1231'.format(tbis.year-1)
+                cbis = '{}1231'.format(tbis.year-2)
             else:
                 cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
             return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
@@ -808,9 +808,14 @@ class dow_handler(dict):
                 metaftp.save_file(filename,filename)
                 unzip_file(filename)
                 df_tmp = self.get_station_df_csv(os.getcwd())
-                self.to_sqlite(df_tmp, key) ## TODO, what if sqlite is not used?
-            except:
-                print(f"{self.pathremote+filename} not found")
+                filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+                #tabname = f"{self.par}_{self.resolution}"
+                write_sqlite(df_tmp, key, 
+                          tabname=self.tabname,
+                          filename=filenamesql,
+                          debug=self.debug) ## TODO, what if sqlite is not used?
+            except Exception as Excp:
+                print(f"{self.pathremote+filename} not found\n")
                 not_in_list.append(self.pathremote+filename)
             os.chdir('../')
 
@@ -908,41 +913,6 @@ class dow_handler(dict):
 
         return df_data
 
-
-    def to_sqlite(self,df_in,key):
-        """ Save data to sqlite
-        """
-
-        filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
-
-        con = sqlite3.connect(filename,uri=True)
-
-        tabname = f"{self.par}_{self.resolution}"
-
-        lnew = True
-
-        try:
-            sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
-            if(self.debug):
-                print("Compare Sets")
-                print(sqlexec)
-
-            df_old = pd.read_sql_query(sqlexec,con)
-            df_old.drop_duplicates(inplace=True)
-            df_test = pd.concat([df_old,df_in]).drop_duplicates().reset_index(drop=True)
-            df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
-            df_test.drop(columns='_merge',inplace=True)
-            df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
-            lnew = False
-
-        except Exception as Excp:
-            lnew = True  # if above fails, there seems to be no tab according to this name
-            print(Excp)
-
-        if(lnew):
-            df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi')
-
-        con.close()
 
     def clean_database(self):
         """ Cleans Database --> could be possible if multiple times data was added

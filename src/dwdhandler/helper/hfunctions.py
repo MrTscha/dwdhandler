@@ -7,13 +7,14 @@ Created on Sat Jun 06 17:32:40 2021
 @description: some helper functions """
 
 from os import makedirs, system, popen, getcwd, listdir, chdir
-from os.path import exists, isfile, join
+from os.path import exists, isfile, join, split
 import glob
-from sys import stdout
+from sys import stdout, exc_info
 import pandas as pd
 import numpy as np
 import datetime
 import zipfile
+import sqlite3
 
 def check_create_dir(dir_in):
     """ Simple check if dir exists, if not create it """
@@ -200,3 +201,57 @@ def list_files(dir_in, ending='',only_files=False):
 # math related
 def moving_average(x, w):
     return np.ma.convolve(x, np.ma.ones(w), 'valid') / w
+
+def write_sqlite(df_in,key,
+              tabname=None,
+              filename=None,
+              debug=False):
+    """ Save data to sqlite
+    df_in:   DataFrame 
+    key:     key of Station
+    tabname: Table to write to (Default None and if None it returns without doing anything)
+    filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+    debug:    Some additional output
+    """
+
+    if(filename is None):
+        #filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+        print("No filename given")
+        return
+
+    con = sqlite3.connect(filename,uri=True)
+
+    if(tabname is None):
+        print("No table name given")
+        return
+
+    lnew = True
+
+    try:
+        sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
+        if(debug):
+            print("Compare Sets")
+            print(sqlexec)
+
+        df_old = pd.read_sql_query(sqlexec,con)
+        df_old.drop_duplicates(inplace=True)
+        df_test = pd.concat([df_old,df_in]).drop_duplicates().reset_index(drop=True)
+        df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
+        df_test.drop(columns='_merge',inplace=True)
+        df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
+        lnew = False
+
+    except Exception as Excp:
+        lnew = True  # if above fails, there seems to be no tab according to this name
+        if(debug):
+            print(Excp)
+
+    if(lnew):
+        df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi')
+
+    con.close()
+
+def write_exc_info():
+    exc_type, exc_obj, exc_tb = exc_info()
+    fname = split(exc_tb.tb_frame.f_code.co_filename)[1]
+    print(exc_type, fname, exc_tb.tb_lineno)
