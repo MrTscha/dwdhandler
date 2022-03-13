@@ -9,6 +9,7 @@ Created on Wed Feb 23 17:45:00 2022
 
 #import system modules
 from distutils.log import debug
+from enum import unique
 import os
 from re import I
 import numpy as np
@@ -16,7 +17,7 @@ import pandas as pd
 
 #local modules
 from ..constants.filedata import *
-from ..helper.hfunctions import write_sqlite
+from ..helper.hfunctions import write_sqlite, write_exc_info
 
 # create class for station data
 class station_data_handler(dict):
@@ -154,7 +155,7 @@ class station_data_handler(dict):
 
         ## Add here min/max/percentiles
 
-    def calc_clim_stats(self,percentile=[10,90]):
+    def calc_clim_stats(self,percentiles=[0.1,0.9]):
         """Calculate the occuring minimum and maximum and percentile of data
         This routine calculates the minimum and maximum occuring in the data
         It creates a DataFrame attached to the class with suffixes _min _max _perc_low _perc_high,
@@ -166,20 +167,93 @@ class station_data_handler(dict):
 
         # monthly
 
-        # yearly
-        df_stats = self.df_yearly.min().to_frame().T.add_suffix('_Min')
-        df_stats = df_stats.merge(self.df_yearly.idxmin().to_frame().T.add_suffix('_Min_Datum'),left_index=True,right_index=True)
-        df_stats = self.df_yearly.max().to_frame().T.add_suffix('_Max')
-        df_stats = df_stats.merge(self.df_yearly.idxmax().to_frame().T.add_suffix('_Max_Datum'),left_index=True,right_index=True)
-        #df_maxval.T.merge(df_maxidx.T.add_suffix('_Datum'),left_index=True,right_index=True)
-        self['df_yearly_stats'] = df_stats
+        ## yearly
+        #df_stats = self.df_yearly.min().to_frame().T.add_suffix('_Min')
+        #df_stats = df_stats.merge(self.df_yearly.idxmin().to_frame().T.add_suffix('_Min_Datum'),left_index=True,right_index=True)
+        #df_stats = self.df_yearly.max().to_frame().T.add_suffix('_Max')
+        #df_stats = df_stats.merge(self.df_yearly.idxmax().to_frame().T.add_suffix('_Max_Datum'),left_index=True,right_index=True)
+        ##df_maxval.T.merge(df_maxidx.T.add_suffix('_Datum'),left_index=True,right_index=True)
+        #self['df_yearly_stats'] = df_stats
+
+        # daily
+        self['df_daily_clim_stats'] = self.calc_daily_clim_stats(self.df_daily,percentiles=percentiles)
+
+        # monthly
+        self['df_monthly_clim_stats'] = self.calc_monthly_clim_stats(self.df_monthly,percentiles=percentiles)
+         
+
+    def calc_daily_clim_stats(self,df_in,percentiles=None):
+        """This routine calculates climatolocal percentiles and maximum each day of the year
+           It discard Feb 29. So the return is 365 days. It does a loop over the days
+           because groupby takes leap years into accoutn and therefore leads to 366 days
+           This approach may take more time than for example regroup
+        Arguments:
+        -------------------
+            df_in:  DataFrame with data (index must be date)
+            percentiles: quantile values between 0 and 1. Default is None, so no quantiles calculated
+        """
+
+        i = 1
+        for date in self.nonleap_range:
+            cond = (df_in.index.month == date.month) & (df_in.index.day == date.day)
+            df_minmax = df_in[cond].agg(['max','min'])
+            df_minmax['DOY'] = np.full(2,i)
+            try:
+                #df_out = df_out.append(df_minmax,ignore_index=True)
+                df_out = df_out.append(df_minmax)
+            except: # create the DataFrame
+                df_out = df_minmax.copy()
+
+            # as DataFrame should be created already just append percentiles
+            if(percentiles is not None):
+                df_percentiles = df_in[cond].quantile(percentiles)
+                df_percentiles['DOY'] = np.full(len(percentiles),i)
+                #df_out = df_out.append(df_percentiles,ignore_index=True)
+                df_out = df_out.append(df_percentiles)
+            i += 1
+
+        df_out.reset_index(inplace=True)
+        df_out.rename(columns={'index':'stat'},inplace=True)
+        return df_out
+
+    def calc_monthly_clim_stats(self,df_in,percentiles=None):
+        """This routine calculates climatolocal percentiles and maximum each month in year 
+           It does a loop over the month
+        Arguments:
+        -------------------
+            df_in:  DataFrame with data (index must be date)
+            percentiles: quantile values between 0 and 1. Default is None, so no quantiles calculated
+        """
+
+        i = 1
+        for month in df_in.index.month.unique():
+            cond = (df_in.index.month == month)
+            df_minmax = df_in[cond].agg(['max','min'])
+            df_minmax['Monat'] = np.full(2,i)
+            try:
+                df_out = df_out.append(df_minmax)
+            except:
+                df_out = df_minmax.copy()
+            
+            # as DataFrame should be created already just append percentiles
+            if(percentiles is not None):
+                df_percentiles = df_in[cond].quantile(percentiles)
+                df_percentiles['Monat'] = np.full(len(percentiles),i)
+                df_out = df_out.append(df_percentiles)
+            i += 1 
+
+        df_out.reset_index(inplace=True)
+        df_out.rename(columns={'index':'stat'},inplace=True)
+        return df_out
 
     def calc_daily_clim(self,df_in):
         """This routine calculates the climatolocial mean on each day of the year
            It discard Feb 29. So the return is 365 days. It does a loop over the days
            because groupby takes leap years into account and therefore leads to 366 days
            This approach may take more time than for example regroup
-        df_in:  DataFrame with data (for example subdata with 30 years of data)
+        Arguments:
+        -------------------
+            df_in:  DataFrame with data (for example subdata with 30 years of data)
         """
 
         for date in self.nonleap_range:
@@ -278,6 +352,16 @@ class station_data_handler(dict):
         self.df_yearly.reset_index(inplace=True)
         self.df_yearly = self.add_df_statid(self.df_yearly)
 
+        try:
+            self.df_daily_clim_stats = self.add_df_statid(self.df_daily_clim_stats)
+        except:
+            write_exc_info()
+
+        try:
+            self.df_monthly_clim_stats = self.add_df_statid(self.df_monthly_clim_stats)
+        except:
+            write_exc_info()
+
         self.lsqlite_prep = True
 
     def write_all_df_sqlite(self,key,aggregation=['monthly','yearly'],force=False):
@@ -328,6 +412,24 @@ class station_data_handler(dict):
             tabname  = f'{self.tabname_c}_yearly_{years}'
             self.write_clim_to_sqlite(self[sdf_name],key,tabname)
 
+        try:
+            if(self.ldebug):
+                print("Write daily clim stats")
+            sdf_name = 'df_daily_clim_stats'
+            tabname  = f'{self.tabname_c}_daily_climstats'
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+        except:
+            write_exc_info()
+        try:
+            if(self.ldebug):
+                print("Write monthly clim stats")
+            sdf_name = 'df_monthly_clim_stats'
+            tabname  = f'{self.tabname_c}_monthly_climstats'
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+        except:
+            write_exc_info()
+
+
     def write_clim_to_sqlite(self,df_in,key,
                              tablename):
         """Write sqlite data to 
@@ -340,7 +442,7 @@ class station_data_handler(dict):
         filename = self.base_dir+STATION_FOLDER+SQLITEFILESTAT
 
         write_sqlite(df_in,key,tablename,filename,debug=self.ldebug)
-
+    
     def combine_df_clim_class(self,station_data_class,clim_norms=None):
         """This combines climate normal Dataframes from another instance
         station_data_class: This class
@@ -371,3 +473,22 @@ class station_data_handler(dict):
             tabname  = f'{self.tabname_c}_yearly_{years}'
             self[sdf_name] = self[sdf_name].merge(station_data_class[sdf_name],left_index=True,right_index=True)
 
+    def combine_df_clim_stats(self,station_data_class):
+        """Combines climate daily statistics from another class instance
+        Arguments:
+        ----------------------------
+            station_data_class: This class with calculated df_daily_clim_stats
+        """
+
+        sdf_name = 'df_daily_clim_stats'
+        self[sdf_name] = self[sdf_name].merge(station_data_class[sdf_name],left_index=True,right_index=True)
+        # drop _y entries
+        try:
+            self[sdf_name].drop(list(self[sdf_name].filter(regex='_y')),axis=1,inplace=True)
+        except:
+            pass
+        # strip _x suffixes
+        try:
+            self[sdf_name].columns = self[sdf_name].columns.str.rstrip("_x")
+        except:
+            pass
