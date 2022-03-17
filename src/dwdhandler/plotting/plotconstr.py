@@ -93,6 +93,9 @@ class plot_handler(dict):
             'precipitation':{'abs':cm.viridis_r,
                              'per':cm.PuOr,
                              'dev':cm.PuOr},
+            'precipitation_p':{'abs':cm.viridis_r,
+                               'per':cm.PuOr,
+                               'dev':cm.PuOr},
             'sunshine_duration':{'abs':cm.viridis_r,
                              'per':cm.cividis,
                              'dev':cm.PuOr},
@@ -124,6 +127,15 @@ class plot_handler(dict):
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                    'per':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'precipitation_p'     :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                    'per':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           },
             'evapo_p'             :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
@@ -148,6 +160,13 @@ class plot_handler(dict):
                                           {'vmax':3.0, 'vmin':-3.0, 'vdd':0.1},
                                           },
             'precipitation'       :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':150.0, 'vmin':-150.0, 'vdd':5},
+                                          },
+            'precipitation_p'     :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'per': 
                                           {'vmax':125.0,'vmin':75.0,'vdd':1},
@@ -194,18 +213,27 @@ class plot_handler(dict):
             'precipitation'       :{'long' :'Niederschlagssumme [{}]'.format(self.unit_dict['precipitation']),
                                     'abs'  :'$P_{mean}$',
                                     'dev'  :'$P_{mean}$',
+                                    'per'  :'$P_{mean}$',
+                                    'short':'Niederschlagssumme'},
+            'precipitation_p'     :{'long' :'Niederschlagssumme [{}]'.format(self.unit_dict['precipitation_p']),
+                                    'abs'  :'$P_{mean}$',
+                                    'dev'  :'$P_{mean}$',
+                                    'per'  :'$P_{mean}$',
                                     'short':'Niederschlagssumme'},
             'evapo_p'             :{'long' :'Potentielle Verdunstung [{}]'.format(self.unit_dict['evapo_p']),
                                     'abs'  :'$evap_{mean}$',
                                     'dev'  :'$evap_{mean}$',
+                                    'per'  :'$evap_{mean}$',
                                     'short':'Pot. Verdunstung'},
             'evapo_r'             :{'long' :'Reale Verdunstung [{}]'.format(self.unit_dict['evapo_r']),
                                     'abs'  :'$evar_{mean}$',
                                     'dev'  :'$evar_{mean}$',
+                                    'per'  :'$evar_{mean}$',
                                     'short':'Reale Verdunstung'},
             'cwb'                 :{'long' :'Klimatische Wasserbilanz [{}]'.format(self.unit_dict['cwb']),
                                     'abs'  :'$KWB_{mean}$',
                                     'dev'  :'$KWB_{mean}$',
+                                    'per'  :'$KWB_{mean}$',
                                     'short':'Klimatische Wasserbilanz'},
         }
 
@@ -454,7 +482,7 @@ class plot_handler(dict):
         # add dwd as source
         if(dsource):
             plt.text(1.05,0.2,'Datengrundlage:DWD',fontsize=10,transform=ax.transAxes)
-        plt.text(1.048,0.2,f'Visualisierung: {self.creator}',fontsize=10,transform=ax.transAxes)
+        plt.text(1.048,0.1,f'Visualisierung: {self.creator}',fontsize=10,transform=ax.transAxes)
 
         filename = f"{self.plot_dir}{varp}_{year}_{ptype}.png"
 
