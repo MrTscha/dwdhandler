@@ -176,7 +176,7 @@ NAME_CONVERSATION_MAP = {
     'air_temperature':'TU',
     'cloud_type':'CS',
     'cloudiness':'N',
-    'dewpoint':'TD',
+    'dew_point':'TD',
     'extreme_wind':'FX',
     'moisture':'TF',
     'precipitation':'RR',
@@ -204,7 +204,14 @@ NAME_CONVERSATION_MAP = {
     'historical':'hist',
     'now':'now'
 }
-
+PLOT_NAME_CONV = {
+    'TT':'Temperatur',
+    'RF':'Luftfeuchtigkeit',
+    'TT_TU':'Temperatur',
+    'RF_TU':'Luftfeuchtigkeit',
+    'TD':'Taupunkt',
+    'R1':'Niederschlag'
+}
 REG_CONV_MAP = {
     'air_temperature_mean':'tm',
     'precipitation':'rr',

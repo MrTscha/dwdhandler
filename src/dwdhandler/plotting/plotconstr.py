@@ -18,6 +18,8 @@ import matplotlib.gridspec as gridspec
 import matplotlib as mpl
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
+from matplotlib.dates import DateFormatter
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import seaborn as sns
 
@@ -26,11 +28,12 @@ import cartopy.feature as cfeature
 import cartopy.io.shapereader as shpreader
 
 from ..helper.hfunctions import moving_average
+from ..constants.filedata import PLOT_NAME_CONV
 
 # activate seaborn plotting settings
 sns.set('talk')
-#sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'1.0'})
-sns.set_style("whitegrid", {'axes.grid': False})
+sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'1.0'})
+#sns.set_style("whitegrid", {'axes.grid': False})
 #sns.set_context('talk')
 
 class plot_handler(dict):
@@ -73,14 +76,30 @@ class plot_handler(dict):
             'air_temperature_max':'$\degree$C',
             'air_temperature_mean':'$\degree$C',
             'air_temperature':'$\degree$C',
+            'dew_point':'$\degree$C',
             'air_temperature_min':'$\degree$C',
             'pressure':'hPa',
             'humidity':'%',
+            'wind':'km/h',
+            'cloud_type':' ',
+            'cloud_amount':' ',
+            'radiation':'Jcm$^2$',
             'precipitation':'mm',
             'precipitation_p':'%',
             'evapo_p':'mm',
             'evapo_r':'mm',
             'cwb':'mm'
+        }
+        self.color_dict = {
+            'air_temperature':'red',
+            'dew_point':'blue',
+            'humidity':'green',
+            'precipitation':'blue',
+            'radiation':'red',
+            'wind':'red',
+            'cloud_type':'blue',
+            'cloud_amount':'blue',
+            'pressure':'black'
         }
         #cmap
         self.cmap_dict = {
@@ -492,21 +511,124 @@ class plot_handler(dict):
         # After all close figure
         plt.close(fig) 
 
-    def plot_station_meteo(self,df_in,var_plot=['TT_10'],var_cat=['air_temperature']):
-        """Plots simple station meteogramm"""
+    def plot_station_meteo(self,df_in,
+                           var_plot=['TT_TU'],
+                           var_cat=['air_temperature'],
+                           ax_arr=None,
+                           lday=True):
+        """Plots simple station meteogramm
+        Arguments:
 
-        tot_len = len(var_plot)
+        """
+
+        assert(len(var_cat) == len(var_plot))
+
+        if(ax_arr is None):
+            tot_len = len(var_plot)
+        else:
+            assert(len(ax_arr) == len(var_plot))
+            tot_len = np.max(ax_arr)+1
+
+        sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'0.5'})
         fig, ax = plt.subplots(tot_len,1,figsize=(10,6))
 
         i = 0
-        for var, varc in zip(var_plot,var_cat):
-            df_in[var].plot(ax=ax[i])
-            ax[i].set_ylabel(self.unit_dict[varc])
-            if(i < tot_len-1):
-                ax[i].axes.get_xaxis().set_visible(False)
-            i += 1
+
+        if(ax_arr is None):
+            for var, varc in zip(var_plot,var_cat):
+                if(tot_len != 1):
+                    ax_d = ax[i]
+                else:
+                    ax_d = ax
+
+                if(varc in ['precipitation']):
+                    self.plot_timeseries_meteogram(df_in,var,varc,ax_d,plot_bar=True,lday=lday)
+                else:
+                    self.plot_timeseries_meteogram(df_in,var,varc,ax_d,lday=lday)
+                if(i < tot_len-1 and tot_len != 1):
+                #    #ax_d.axes.get_xaxis().set_visible(False)
+                    ax_d.set_xticklabels([])
+                i += 1
+        else:
+            for var, varc, i in zip(var_plot,var_cat,ax_arr):
+                if(varc in ['precipitation']):
+                    self.plot_timeseries_meteogram(df_in,var,varc,ax[i],plot_bar=True,lday=lday)
+                else:
+                    self.plot_timeseries_meteogram(df_in,var,varc,ax[i],lday=lday)
+
+                if(i < tot_len-1 and tot_len != 1):
+                #    #ax[i].axes.get_xaxis().set_visible(False)
+                    ax[i].set_xticklabels([])
+
+        fig.autofmt_xdate(rotation=45)
+        fig.subplots_adjust(left=0.1,right=0.87,hspace=0.2)
 
         plt.show()
+
+    def plot_timeseries_meteogram(self,df_in,var_in,var_cat,ax,plot_bar=False,lday=True):
+        """Plots Meteogram according to given Variable and DataFrame
+        
+        Arguments:
+            df_in:   DataFrame with data
+            var_in:  Variable of Dataframe to plot
+            var_cat: Variable categorie --> temperature, precipitation...
+            ax:      plot axis
+            plot_bar: Plots additional to bar plot for precipitation cumulative sum of precip (default False)
+            lday:    Data is only one day (default True), manages date formatter
+        """
+
+        try:
+            color = self.color_dict[var_cat]
+        except:
+            color = 'black'
+
+        if(var_cat in ['precipitation']):
+            ax.bar(df_in.index.values,
+                   df_in[var_in],
+                   color=color,
+                   edgecolor=color,
+                   label=f'{var_in}',
+                   width=1.0/len(df_in.index.values)
+                   )
+            if(plot_bar):
+                ax.plot(df_in.index.values,
+                        df_in[var_in].cumsum(),
+                        color=color,
+                        label=f'{var_in}-kum',
+                       )
+        elif(var_cat == 'cloud_amount'):
+            ax.bar(df_in.index.values,
+                    df_in[var_in],
+                    color=color,
+                    edgecolor=color,
+                    label=f'{var_in}',
+                    width=1.0/len(df_in.index.values)
+                   )
+        else:
+            ax.plot(df_in.index.values,
+                    df_in[var_in],
+                    color=color,
+                    label=f'{var_in}'
+                   )
+
+        if(var_cat == 'humidity'):
+            ax.set_ylim(0,100)
+        if(var_cat == 'cloud_amount'):
+            ax.set_ylim(0,8)
+        if(var_cat in ['air_temperature','dew_point']):
+            ax.axhline(0,linestyle='--',color='black')
+
+        if(lday):
+            date_form = DateFormatter("%Y-%m-%d-%H")
+        else:
+            date_form = DateFormatter("%Y-%m-%d")
+        ax.xaxis.set_major_formatter(date_form)
+        ax.set_xlim(df_in.index[0],df_in.index[-1])
+
+        ax.set_ylabel(self.unit_dict[var_cat])
+        #ax.legend(bbox_to_anchor=(0.5,1.3), loc="upper center",fontsize=8,shadow=True,ncol=4)
+        ax.legend(fontsize=8,shadow=True,ncol=4)
+        ax.grid(axis='x',which='both',zorder=0)
 
     def plot_regavg_thermopluvio(self,date_arr,temp_dev,prec_dev,
                                  stepwise=None,
