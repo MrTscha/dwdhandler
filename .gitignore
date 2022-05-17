@@ -130,3 +130,6 @@ dmypy.json
 
 # vi 
 .swp
+
+# MSVSC workspace
+*.code-workspace
