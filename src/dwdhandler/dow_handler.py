@@ -216,7 +216,10 @@ class dow_handler(dict):
 
         if(self.resolution == '10_minutes'):
             if(self.period == 'now'):
-                return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+                if(self.par == 'solar'):
+                    return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_sd{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+                else:
+                    return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
             else:
                 return f'zehn_min_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
         else:
@@ -241,7 +244,14 @@ class dow_handler(dict):
         if(self.period == 'recent'):
             return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
         elif(self.period == 'now'):
-            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            if(self.par == 'precipitation'): ## may be the Name Conversation Map should be restructured! that it contains already the period and then self.par
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            elif(self.par == 'wind'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_wind_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            elif(self.par == 'solar'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_SOLAR_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            else:
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
         else:
             cvon = self.get_obj_station(key,obj='von').strftime('%Y%m%d')
             tbis = self.get_obj_station(key,obj='bis')
@@ -575,8 +585,8 @@ class dow_handler(dict):
 
         if(isinstance(year, list)):
             if(self.debug):
-                print(f'Read year {year[0]} - {year[1]}')
-            year_arange = np.arange(year[0],year[1]+1)
+                print(f'Read year {year[0]} - {year[-1]}')
+            year_arange = np.arange(year[0],year[-1]+1)
         else:
             if(self.debug):
                 print(f"Read year {year}")
@@ -584,8 +594,8 @@ class dow_handler(dict):
 
         if(isinstance(month, list)):
             if(self.debug):
-                print(f'and month {month[0]} - {month[1]}')
-            month_arange = np.arange(month[0],month[1]+1)
+                print(f'and month {month[0]} - {month[-1]}')
+            month_arange = np.arange(month[0],month[-1]+1)
         else:
             if(self.debug):
                 print(f"and month {month}")
@@ -875,8 +885,15 @@ class dow_handler(dict):
 
         return df_data
 
-    def get_data(self,sqlexec,mask_fillVal=True):
-        """ Get data according to sqlexec"""
+    def get_data(self,sqlexec,
+                 ldateindex=True,
+                 mask_fillVal=True):
+        """ Get data according to sqlexec
+        Arguments:
+            sqlexec:      SQLite Query
+            ldateindex:   Date ("MESS_DATUM") as index (True/False --> Default True)
+            mask_fillVal: mask FillValue (True/False --> Default True)
+        """
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
@@ -886,20 +903,21 @@ class dow_handler(dict):
 
         con.close()
 
-        if(self.resolution == 'hourly'):
-            strformat='%Y%m%d%H'
-        elif(self.resolution == '10_minutes'):
-            strformat='%Y%m%d%H%M'
-        elif(self.resolution == 'daily'):
-            strformat='%Y%m%d'
-        elif(self.resolution == 'monthly'):
-            strformat='%Y%m'
-        elif(self.resolution == 'yearly'):
-            strformat='%Y'
+        if(ldateindex):
+            if(self.resolution == 'hourly'):
+                strformat='%Y%m%d%H'
+            elif(self.resolution == '10_minutes'):
+                strformat='%Y%m%d%H%M'
+            elif(self.resolution == 'daily'):
+                strformat='%Y%m%d'
+            elif(self.resolution == 'monthly'):
+                strformat='%Y%m'
+            elif(self.resolution == 'yearly'):
+                strformat='%Y'
 
 
-        df_data.index = pd.to_datetime(df_data['MESS_DATUM'],format=strformat)
-        df_data.drop(columns=['MESS_DATUM'],inplace=True)
+            df_data.index = pd.to_datetime(df_data['MESS_DATUM'],format=strformat)
+            df_data.drop(columns=['MESS_DATUM'],inplace=True)
 
         columns = df_data.columns
         replace_col = {}
@@ -928,7 +946,7 @@ class dow_handler(dict):
         sqlexc = f"DELETE FROM {tabname} "\
                   "WHERE rowid NOT IN "\
                   "(" \
-                  "SELECT min(rowid) "\
+                  "SELECT max(rowid) "\
                  f"FROM {tabname} "\
                   "GROUP BY STATIONS_ID, MESS_DATUM )"
 

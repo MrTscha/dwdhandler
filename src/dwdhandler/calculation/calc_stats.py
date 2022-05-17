@@ -175,11 +175,13 @@ class station_data_handler(dict):
         ##df_maxval.T.merge(df_maxidx.T.add_suffix('_Datum'),left_index=True,right_index=True)
         #self['df_yearly_stats'] = df_stats
 
-        # daily
-        self['df_daily_clim_stats'] = self.calc_daily_clim_stats(self.df_daily,percentiles=percentiles)
+        if(self.lcalc):
+            # daily
+            self['df_daily_clim_stats'] = self.calc_daily_clim_stats(self.df_daily,percentiles=percentiles)
 
-        # monthly
-        self['df_monthly_clim_stats'] = self.calc_monthly_clim_stats(self.df_monthly,percentiles=percentiles)
+        if(self.lcalc):
+            # monthly
+            self['df_monthly_clim_stats'] = self.calc_monthly_clim_stats(self.df_monthly,percentiles=percentiles)
          
 
     def calc_daily_clim_stats(self,df_in,percentiles=None):
@@ -308,14 +310,15 @@ class station_data_handler(dict):
                        Default is following list [1961,1971,1981,1991]
         """
 
-        if(clim_norms is None):
-            clim_norms = self.default_clim_norms
+        if(self.lcalc):
+            if(clim_norms is None):
+                clim_norms = self.default_clim_norms
 
-        for years in clim_norms:
-            yeare = years + 29 #
-            if(self.ldebug):
-                print(f'Calculate normal period: {years} - {yeare}')
-            self.calc_clim_mean(years,yeare)
+            for years in clim_norms:
+                yeare = years + 29 #
+                if(self.ldebug):
+                    print(f'Calculate normal period: {years} - {yeare}')
+                self.calc_clim_mean(years,yeare)
 
     def prepare_to_sqlite(self,
                           clim_norms=None):

@@ -219,6 +219,9 @@ def write_sqlite(df_in,key,
         print("No filename given")
         return
 
+    if(debug):
+        print(f"Try to open: {filename}")
+
     con = sqlite3.connect(filename,uri=True)
 
     if(tabname is None):

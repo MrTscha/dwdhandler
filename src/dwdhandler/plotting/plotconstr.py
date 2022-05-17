@@ -8,8 +8,10 @@ Created on Thu Dec 05 11:40:40 2021
 """
 
 #import system modules
+import pty
+from re import A
 from sqlite3 import Timestamp
-from turtle import color
+#from turtle import color
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -23,9 +25,27 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import seaborn as sns
 
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import cartopy.io.shapereader as shpreader
+# try to import folium
+try:
+    import folium
+    from folium import DivIcon, plugins
+    from folium import IFrame
+    lfolium = True
+except:
+    lfolium = False
+
+try:
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    import cartopy.io.shapereader as shpreader
+    lcartopy = True
+except:
+    lcartopy = False
+
+# import plotly
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import locale
 
 from ..helper.hfunctions import moving_average
 from ..constants.filedata import PLOT_NAME_CONV
@@ -42,13 +62,18 @@ class plot_handler(dict):
                  shape_dir=None,
                  shape_fil=None,
                  debug=False,
-                 creator=None):
+                 creator=None,
+                 source=None,
+                 figsize=None):
         # safe init settings
         self.plot_dir = plot_dir
         self.shape_dir = shape_dir
         self.shape_fil = shape_fil
         self.debug     = debug
         self.creator   = creator
+        self.source    = source
+        if(figsize is None):
+            self.figsize = (12,8)
 
 
         # Create month array
@@ -80,10 +105,17 @@ class plot_handler(dict):
             'air_temperature_min':'$\degree$C',
             'pressure':'hPa',
             'humidity':'%',
-            'wind':'km/h',
+            'windvel':'km/h',
+            'winddir':'$\circ$',
             'cloud_type':' ',
             'cloud_amount':' ',
             'radiation':'Jcm$^2$',
+            'radiation_glob':'Jcm$^2$',
+            'radiation_diffus':'Jcm$^2$',
+            'radiation_atmo':'Jcm$^2$',
+            'sundur_hour':'h',
+            'sundur_hour_p':'%',
+            'sundur_min':'min',
             'precipitation':'mm',
             'precipitation_p':'%',
             'evapo_p':'mm',
@@ -96,7 +128,13 @@ class plot_handler(dict):
             'humidity':'green',
             'precipitation':'blue',
             'radiation':'red',
-            'wind':'red',
+            'windvel':'red',
+            'winddir':'black',
+            'radiation_glob':'red',
+            'radiation_diffus':'black',
+            'radiation_atmo':'blue',
+            'sundur_hour':'goldenrod',
+            'sundur_min':'goldenrod',
             'cloud_type':'blue',
             'cloud_amount':'blue',
             'pressure':'black'
@@ -116,6 +154,12 @@ class plot_handler(dict):
                                'per':cm.PuOr,
                                'dev':cm.PuOr},
             'sunshine_duration':{'abs':cm.viridis_r,
+                             'per':cm.cividis,
+                             'dev':cm.PuOr},
+            'sundur_hour'  :{'abs':cm.viridis_r,
+                             'per':cm.cividis,
+                             'dev':cm.PuOr},
+            'sundur_hour_p':{'abs':cm.viridis_r,
                              'per':cm.cividis,
                              'dev':cm.PuOr},
             'evapo_r'      :{'abs':cm.viridis_r,
@@ -172,6 +216,75 @@ class plot_handler(dict):
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           }
         }
+
+        self.vminmax_dict_station_map = {
+            'air_temperature_mean':{'abs':
+                                          {'vmax':20.0,'vmin':-20.0,'vdd':0.5},
+                                    'dev':
+                                          {'vmax':3.0, 'vmin':-3.0, 'vdd':0.1},
+                                          },
+            'air_temperature_max':{'abs':
+                                          {'vmax':30.0,'vmin':-30.0,'vdd':0.5},
+                                    'dev':
+                                          {'vmax':3.0, 'vmin':-3.0, 'vdd':0.1},
+                                          },
+            'air_temperature_min':{'abs':
+                                          {'vmax':30.0,'vmin':-30.0,'vdd':0.5},
+                                    'dev':
+                                          {'vmax':3.0, 'vmin':-3.0, 'vdd':0.1},
+                                          },
+            'precipitation'       :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'precipitation_p'     :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'sunshine_duration'   :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':150.0, 'vmin':-150.0, 'vdd':5},
+                                          },
+            'sundur_hour'         :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':150.0, 'vmin':-150.0, 'vdd':5},
+                                          },
+            'sundur_hour_p'       :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'per': 
+                                          {'vmax':125.0,'vmin':75.0,'vdd':1},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_p'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'evapo_r'             :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'cwb'                 :{'abs':
+                                          {'vmax':300.0,'vmin':-300.0,'vdd':20},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          }
+        }
+
         self.vminmax_dict_regavgyear = {
             'air_temperature_mean':{'abs':
                                           {'vmax':20.0,'vmin':-20.0,'vdd':0.5},
@@ -261,7 +374,22 @@ class plot_handler(dict):
         # according to coordinaters used (epsg) it should be right under the month plot
         self.x_txt_mean = 0.20
         self.y_txt_mean = -0.15
-        
+
+
+
+    def load_shape_file(self):
+        """
+            function which loads shapefile. 
+        """
+        try:
+            return list(shpreader.Reader(self.shape_dir+self.shape_fil).geometries())
+        except:
+            if(self.debug):
+                if(self.shape_fil is None):
+                    print(f"No Shapefile given")
+                else:
+                    print(f"Could not read shape file {self.shape_dir+self.shape_fil}")
+            return
 
     def plot_raster_data(self,lons,lats,data,varp,
                          ptype='abs',
@@ -271,12 +399,11 @@ class plot_handler(dict):
                          **kwargs):
         """ Simple contour plot """
 
-        try:
-            adm1_shapes = list(shpreader.Reader(self.shape_dir+self.shape_fil).geometries())
-        except:
-            if(self.debug):
-                print(f"Could not read shape file {self.shape_dir+self.shape_fil}")
-            pass
+        if(not lcartopy):
+            print("Cartopy is not installed!\nThis function will not work")
+            return
+        
+        adm1_shapes = self.load_shape_file()
 
         if(ax is None):
             fig, ax = plt.subplots(subplot_kw={'projection': ccrs.PlateCarree()})
@@ -344,8 +471,8 @@ class plot_handler(dict):
             print(f'Total years: {total_years}, columns: {columns}, rows: {rows}')
 
         fig, axs = plt.subplots(rows,columns, figsize=(columns*2,rows*2),
-        #fig, axs = plt.subplots(rows,columns, figsize=(10,8),
                                 subplot_kw={'projection':ccrs.PlateCarree()})
+        #fig, axs = plt.subplots(rows,columns, figsize=(10,8),
 
         k = 0
         i = 0
@@ -511,10 +638,161 @@ class plot_handler(dict):
         # After all close figure
         plt.close(fig) 
 
+    def plot_map_station_val(self,
+                             data_in,
+                             var_plot,
+                             date_in,
+                             lats=None,
+                             lons=None,
+                             ax=None,
+                             ptype='abs',
+                             title=None,
+                             dsource=True,
+                             dcreator=False,
+                             filename=None):
+        """
+        Plots map with station distribution of given values
+        Arguments:
+            df_in:    DataFrame with data
+            var_plot: Variable to plot
+            date_in:  date 
+            lats:     list of latitude coordinate (must fit to station location)
+            lons:     list of longitude coordinate (must fit to station location)
+            ax:       Axis to plot to (default None --> axis is created)
+            ptype:    type of potting ('abs' or 'dev')  default 'abs'
+            title:    Title (default None)
+            dsource:  print source on plot
+            dcreator: print creator, defined by init (default False)
+            filename: Other filename than automatic created (default None --> creates automated one)
+        """
+
+        if(not lcartopy):
+            print("Cartopy is not installed!\nThis function will not work")
+            return
+
+        if(lats is None and lons is None):
+            print("Please provide lon and lat coordinate")
+            print("No data plotted")
+            return
+
+        adm1_shapes = self.load_shape_file()
+
+        if(ax is None):
+            fig, ax = plt.subplots(figsize=self.figsize,subplot_kw={'projection': ccrs.PlateCarree()})
+        
+        try:
+            ax.add_geometries(adm1_shapes, ccrs.PlateCarree(),
+                              edgecolor='k', facecolor='none', alpha=0.6,zorder=1,linewidth=0.5)    
+        except Exception as Excp:
+            if(self.debug):
+                print("Could not plot shape geometries")
+                print(Excp)
+            pass
+
+        norm_size = [self.vminmax_dict_station_map[var_plot][ptype]['vmin'],self.vminmax_dict_station_map[var_plot][ptype]['vmax']]
+
+        im = ax.scatter(
+            lons, lats,
+            c=data_in,
+            s=54,
+            edgecolors='k',
+            cmap=self.cmap_dict[var_plot][ptype],
+            norm=plt.Normalize(norm_size[0],norm_size[-1]),
+            transform=ccrs.PlateCarree()
+        )
+
+        if(title is None):
+            title = self.var_title_dict[var_plot] 
+        ax.set_title(title)
+        ax.set_extent([5.3, 15.3, 47.0, 55.5], crs=ccrs.PlateCarree())
+
+        cax = plt.axes([0.85, 0.25, 0.01, 0.5])
+        cbar = plt.colorbar(im,cax=cax,extend='both')
+        cbar.set_label(self.unit_dict[var_plot])
+        if(dsource):
+            ax.text(1.02,0.1,self.source,fontsize=10,transform=ax.transAxes)
+        if(dcreator):
+            ax.text(1.02,0.06,f'Visualisierung u. Berechnung: {self.creator}',fontsize=8,transform=ax.transAxes)
+
+        if(filename is None):
+            filename = f"{self.plot_dir}{var_plot}_{date_in.year}_{date_in.month:02d}_{ptype}.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+
+        plt.savefig(filename,bbox_inches='tight')
+        # After all close figure
+        plt.close(fig)
+
+    def plot_data_histo(self,
+                        data_in,
+                        var_plot,
+                        date_in,
+                        bin_arr=None,
+                        ax=None,
+                        ptype='abs',
+                        title=None,
+                        dsource=True,
+                        dcreator=False,
+                        filename=None
+                       ):
+        """
+        Plots histogram of given data and uses cmap of plotconstr, 
+        which is according to the given variable
+        Arguments:
+            df_in:   DataFrame with data
+            date_in: date 
+            bin_arr: Bins to use (default None --> calculated from vminmax_dict_station_map)
+            ax:      Axis to plot to (default None --> axis is created)
+            ptype:   type of potting ('abs' or 'dev')  default 'abs'
+            title:   Title (default None)
+            dsource: print source on plot
+            dcreator: print creator, defined by init (default False)
+            filename: Other filename than automatic created (default None --> creates automated one)
+        """
+
+        sns.set_theme(style='dark')
+
+        # if no bin_arr given, create one
+        if(bin_arr is None):
+            bin_arr =  np.arange(self.vminmax_dict_station_map[var_plot][ptype]['vmin'],
+                               self.vminmax_dict_station_map[var_plot][ptype]['vmax']+self.vminmax_dict_station_map[var_plot][ptype]['vdd'],
+                               self.vminmax_dict_station_map[var_plot][ptype]['vdd'])
+
+        # calculate histogram
+        counts, bins = np.histogram(data_in,bins=bin_arr)
+
+        # create figure if no axis is given
+        if(ax is None):
+            fig, ax = plt.subplots(figsize=self.figsize)
+
+        cm = self.cmap_dict[var_plot][ptype]
+        #plt.cm.get_cmap(plot_class.var_dict[svardict]['cm'])
+        x_span = bins.max() - bins.min()
+        col = [cm(((x-bins.min())/x_span)) for x in bins]
+        ax.bar(bins[:-1],counts,color=col,width=bins[1]-bins[0])
+        ax.set_xlabel(self.unit_dict[var_plot])
+
+        if(title is None):
+            title = self.var_title_dict[var_plot]
+        
+        ax.set_title(title)
+
+        if(filename is None):
+            filename = f"{self.plot_dir}{var_plot}_{date_in.year}_{date_in.month:02d}_{ptype}.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+
+        plt.savefig(filename,bbox_inches='tight')
+        # After all close figure
+        plt.close(fig)
+
     def plot_station_meteo(self,df_in,
                            var_plot=['TT_TU'],
                            var_cat=['air_temperature'],
                            ax_arr=None,
+                           title=None,
                            lday=True):
         """Plots simple station meteogramm
         Arguments:
@@ -530,7 +808,11 @@ class plot_handler(dict):
             tot_len = np.max(ax_arr)+1
 
         sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'0.5'})
-        fig, ax = plt.subplots(tot_len,1,figsize=(10,6))
+        #fig, ax = plt.subplots(tot_len,1,figsize=(10,6))
+        fig, ax = plt.subplots(tot_len,1,figsize=(10,2.0*tot_len))
+
+        if(title is not None):
+            plt.suptitle(title)
 
         i = 0
 
@@ -591,11 +873,15 @@ class plot_handler(dict):
                    width=1.0/len(df_in.index.values)
                    )
             if(plot_bar):
-                ax.plot(df_in.index.values,
+                ax2 = ax.twinx()
+                ax2.plot(df_in.index.values,
                         df_in[var_in].cumsum(),
                         color=color,
                         label=f'{var_in}-kum',
                        )
+                ax2.set_ylabel(self.unit_dict[var_cat])
+                ax2.set_ylim(0,df_in[var_in].cumsum().max()+30)
+                ax2.legend(loc='upper right',fontsize=8,shadow=True,ncol=4)
         elif(var_cat == 'cloud_amount'):
             ax.bar(df_in.index.values,
                     df_in[var_in],
@@ -604,6 +890,22 @@ class plot_handler(dict):
                     label=f'{var_in}',
                     width=1.0/len(df_in.index.values)
                    )
+        elif(var_cat in ['sundur','sundur_min','sundur_hour']):
+            ax.bar(df_in.index.values,
+                    df_in[var_in],
+                    color=color,
+                    edgecolor=color,
+                    label=f'{var_in}',
+                    width=1.0/len(df_in.index.values)
+            )
+        elif(var_cat in ['winddir']):
+            ax2 = ax.twinx()
+            ax2.plot(df_in.index.values,
+                    df_in[var_in],
+                    color=color,
+                    label=f'{var_in}'
+                   )
+            ax2.legend(loc='upper right',fontsize=8,shadow=True,ncol=4)
         else:
             ax.plot(df_in.index.values,
                     df_in[var_in],
@@ -615,6 +917,13 @@ class plot_handler(dict):
             ax.set_ylim(0,100)
         if(var_cat == 'cloud_amount'):
             ax.set_ylim(0,8)
+        if(var_cat == 'air_temperature'):
+            ax.set_ylim(round(df_in[var_in].min(),-1)-10,round(df_in[var_in].max()+10,-1))
+        if(var_cat == 'dew_point'):
+            ax.set_ylim(bottom=round(df_in[var_in].min()-10,-1))
+        #if(var_cat == 'sundur'):
+        #    ax.set_ylim(0,1)
+
         if(var_cat in ['air_temperature','dew_point']):
             ax.axhline(0,linestyle='--',color='black')
 
@@ -625,10 +934,26 @@ class plot_handler(dict):
         ax.xaxis.set_major_formatter(date_form)
         ax.set_xlim(df_in.index[0],df_in.index[-1])
 
-        ax.set_ylabel(self.unit_dict[var_cat])
         #ax.legend(bbox_to_anchor=(0.5,1.3), loc="upper center",fontsize=8,shadow=True,ncol=4)
-        ax.legend(fontsize=8,shadow=True,ncol=4)
+        if(var_cat in ['winddir']):
+            ax2.set_ylabel(self.unit_dict[var_cat])
+            ax2.set_ylim(0,420)
+
+        if(var_cat in ['precipitation']):
+            ax.legend(loc='upper left',fontsize=8,shadow=True,ncol=4)
+        elif(var_cat in ['winddir']):
+            ax.legend(loc='upper left',fontsize=8,shadow=True,ncol=4,bbox_to_anchor=(0.0,1.2)).set_zorder(10)
+            ax2.legend(loc='upper right',fontsize=8,shadow=True,ncol=4,bbox_to_anchor=(1.0,1.2)).set_zorder(10)
+        else:
+            ax.legend(fontsize=8,shadow=True,ncol=4)
+
+        try:
+            ax2
+        except:
+            ax.set_ylabel(self.unit_dict[var_cat])
+        
         ax.grid(axis='x',which='both',zorder=0)
+        ax.grid(axis='y',zorder=0,linestyle='--')
 
     def plot_regavg_thermopluvio(self,date_arr,temp_dev,prec_dev,
                                  stepwise=None,
@@ -1073,3 +1398,756 @@ class plot_handler(dict):
         value: list (length 3) of RGB values
         Returns: list (length 3) of decimal values'''
         return [v/256 for v in value]
+
+
+class plotly_class:
+    def __init__(self):
+        self.plot_unit_dict = {
+                    'RSK':'mm',
+                    'SDK':'h',
+                    'TMK':'\u00B0C',
+                    'TNK':'\u00B0C',
+                    'TXK':'\u00B0C'
+                    }
+
+        self.plot_title_dict={
+                    'RSK':'Niederschlag',
+                    'SDK':'Sonnenscheindauer',
+                    'RSKc':'kum. Niederschlag (M)',
+                    'RSKcy':'kum. Niederschlag (J)',
+                    'TMK':'Tagesmitteltemperatur',
+                    'TNK':'Tagesminimumtemperatur',
+                    'TXK':'Tageshöchstemperatur'
+                    }
+
+
+    def plot_act_year_ts_sumvar(self,df_in,
+                        var_plot,
+                        df_clim_daily,
+                        clim_period,
+                        df_climstats=None,
+                        date_index=None,
+                        year_in=None,
+                        title=None,
+                        filename=None,
+                        **kwargs
+                        ):
+        """Plots timeseries of actual year
+        with given min/max and percentiles for sum variables
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            clim_period: string --> climatic period e.g. "1991 - 2020"
+            df_clim_daily: Daily mean values
+            df_climstats: Give some climstats min/max percentiles; default None
+            date_index: Give date index Default None --> will be created
+            year_in:  Year which is to be plotted
+            title:  Give a specific title
+            filename: Give an filename
+        """
+
+        if(year_in is None):
+            year_in = df_in.index.year[-1]
+
+        if(date_index is None):
+            date_range = pd.date_range(f'{year_in}-01-01',f'{year_in}-12-31')
+
+        values = np.full(len(date_range),np.nan)
+        # fill values with year values
+        ## TODO take leap year into account
+        date_mask = df_in.index.year == year_in
+        values[0:len(df_in[date_mask])] = df_in[date_mask][var_plot].values
+        # prepare monthly cumsum
+        values_cumsm = np.full(len(date_range),np.nan)
+        values_cumsm[0:len(df_in[date_mask])] = df_in[date_mask][var_plot].groupby(df_in[date_mask].index.month).cumsum().values
+        # prepare yearly cumsum
+        values_cumsy = np.full(len(date_range),np.nan)
+        values_cumsy[0:len(df_in[date_mask])] = df_in[date_mask][var_plot].cumsum()
+
+        if(title is None):
+            title = self.plot_title_dict[var_plot]
+
+        fig = go.Figure()
+
+        # plot values
+        fig.add_trace(go.Bar(
+            x=date_range,
+            y=values,
+            name='Tagessumme',
+            marker_color='blue'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=date_range,
+            y=values_cumsm,
+            name='kum. Monatssumme',
+            line=dict(color='Coral')
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=date_range,
+            y=values_cumsy,
+            name='kum. Jahressumme',
+            line=dict(color='indigo')
+        ))
+
+        if(df_clim_daily is not None or not df_climstats.empty()):
+            # add clim_cumsum
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_clim_daily[var_plot].groupby(date_range.month).cumsum().values,
+                mode='lines',
+                line_color='SlateBlue',
+                name=f'Monatssumme {clim_period}'
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_clim_daily[var_plot].cumsum().values,
+                mode='lines',
+                line_color='SteelBlue',
+                name=f'Jahressumme {clim_period}'
+            ))
+
+        fig.update_layout(
+            title=title,
+            yaxis_title=self.plot_unit_dict[var_plot],
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(
+                            count=1,
+                            label='1m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=2,
+                            label='2m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=3,
+                            label='3m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=6,
+                            label='6m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=False
+                ),
+                type='date'
+            )
+        )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}.html"
+    
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
+    def plot_act_year_ts(self,df_in,
+                         var_plot,
+                         df_clim_daily,
+                         clim_period,
+                         df_climstats=None,
+                         date_index=None,
+                         year_in=None,
+                         title=None,
+                         filename=None
+                        ):
+        """Plots timeseries of actual year
+           with given min/max and percentiles
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            clim_period: string --> climatic period e.g. "1991 - 2020"
+            df_clim_daily: Daily mean values
+            df_climstats: Give some climstats min/max percentiles; default None
+            date_index: Give date index Default None --> will be created
+            year_in:  Year which is to be plotted
+            title:  Give a specific title
+            filename: Give an filename
+        """
+
+        if(year_in is None):
+            year_in = df_in.index.year[-1]
+
+        if(date_index is None):
+            date_range = pd.date_range(f'{year_in}-01-01',f'{year_in}-12-31')
+
+        values = np.full(len(date_range),np.nan)
+        # fill values with year values
+        ## TODO take leap year into account
+        values[0:len(df_in[df_in.index.year == year_in])] = df_in[df_in.index.year == year_in][var_plot].values
+
+        if(title is None):
+            title = self.plot_title_dict[var_plot]
+
+        fig = go.Figure()
+
+        if(df_climstats is not None):
+            minmax_col = 'indigo'
+            # Plot min/max
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_climstats.query('stat == "min"')[var_plot].values,
+                #fill='tonexty',
+                name=f'min',
+                line=dict(color=minmax_col),
+                opacity=0.6
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_climstats.query('stat == "max"')[var_plot].values,
+                fill='tonexty',
+                name=f'max',
+                mode='lines',
+                line_color=minmax_col,
+                opacity=0.6
+            ))
+
+            perz_color = 'burlywood'
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_climstats.query('stat == "0.1"')[var_plot].values,
+                #fill='tonexty',
+                name=f'10. Perz.',
+                mode='lines',
+                line_color=perz_color,
+                opacity=0.75
+            ))
+
+            fig.add_trace(go.Scatter(
+                x=date_range,
+                y=df_climstats.query('stat == "0.9"')[var_plot].values,
+                fill='tonexty',
+                name=f'90. Perz.',
+                mode='lines',
+                line_color=perz_color,
+                opacity=0.75
+            ))
+
+
+        # plot mean
+        fig.add_trace(go.Scatter(
+            x=date_range,
+            y=values,
+            mode='markers',
+            name=f'{year_in}',
+            marker=dict(color='crimson') 
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=date_range,
+            y=df_clim_daily[var_plot].values,
+            name=f'{clim_period}',
+            mode='lines',
+            line_color='black',
+            opacity=0.95
+        ))
+
+        fig.update_layout(
+            legend_itemclick=False,
+            legend_itemdoubleclick=False,
+            title=title,
+            yaxis_title=self.plot_unit_dict[var_plot]
+        )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}_ts.html"
+
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
+    def plot_timeseries_temp_daily_pltly(self,df_in,
+                                   var_plot,
+                                   df_dev=None,
+                                   df_clim=None,
+                                   title=None,
+                                   filename=None):
+        """Plots timeseries
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            df_dev: Deviation DataFrame (may be None)
+            title:  If there is a specific title
+            filename: Give an filename
+        """
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=df_in.index,
+            y=df_in['TXK'].values,
+            name=self.plot_title_dict['TXK'],
+            line=dict(color='red',width=4)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_in.index,
+            y=df_in['TMK'].values,
+            name=self.plot_title_dict['TMK'],
+            line=dict(color='green',width=4)
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=df_in.index,
+            y=df_in['TNK'].values,
+            name=self.plot_title_dict['TNK'],
+            line=dict(color='blue',width=4)
+        ))
+
+        fig.update_layout(
+            title=title,
+            yaxis_title=self.plot_unit_dict['TMK'],
+            legend=dict(
+                orientation='h',
+                x=0.01,
+                y=0.97,
+                traceorder='normal',
+                font=dict(
+                    size=12,
+                )
+            ),
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(
+                            count=1,
+                            label='1m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=2,
+                            label='2m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=6,
+                            label='6m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='1 Jahr',
+                            step='year',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='Akt Jahr',
+                            step='year',
+                            stepmode='todate'
+                        ),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=False
+                ),
+                type='date'
+            )
+        )
+
+        # set initial date
+        fig.update_xaxes(
+            range=[df_in.index[-62],df_in.index[-1]],
+            type='date'
+        )
+
+        fig.update_yaxes(
+            range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
+        )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}.html"
+
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
+    def plot_date_timeseries_pltly(self,df_in,
+                                   var_plot,
+                                   df_dev=None,
+                                   df_clim=None,
+                                   title=None,
+                                   filename=None):
+        """Plots timeseries
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            df_dev: Deviation DataFrame (may be None)
+            title:  If there is a specific title
+            filename: Give an filename
+        """
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=df_in.index,
+            y=df_in[var_plot].values,
+            name=self.plot_title_dict[var_plot],
+            line=dict(color='red',width=4)
+        ))
+
+        fig.update_layout(
+            title=title,
+            yaxis_title=self.plot_unit_dict[var_plot],
+            legend=dict(
+                orientation='h',
+                x=0.01,
+                y=0.97,
+                traceorder='normal',
+                font=dict(
+                    size=12,
+                )
+            ),
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(
+                            count=1,
+                            label='1m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=2,
+                            label='2m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=6,
+                            label='6m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='1 Jahr',
+                            step='year',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='Akt Jahr',
+                            step='year',
+                            stepmode='todate'
+                        ),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=False
+                ),
+                type='date'
+            )
+        )
+
+        # set initial date
+        fig.update_xaxes(
+            range=[df_in.index[-62],df_in.index[-1]],
+            type='date'
+        )
+
+        fig.update_yaxes(
+            range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
+        )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}.html"
+
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
+    def plot_date_bar_pltly(self,df_in,
+                            var_plot,
+                            df_dev=None,
+                            df_clim=None,
+                            title=None,
+                            filename=None
+                            ):
+        """Plots bar chart with plotly bar
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            df_dev: Deviation DataFrame (may be None)
+            title:  If there is a specific title
+            filename: Give an filename
+        """
+
+        len_data = len(df_in[var_plot].values)
+        if(var_plot in ['RSK']):
+            cumsum = df_in[f'{var_plot}c'].values
+            cumsumy = df_in[f'{var_plot}cy'].values
+        if(title is None):
+            title = self.plot_title_dict[var_plot]
+
+        cunit = self.plot_unit_dict[var_plot]
+
+        #if(df_dev is not None):
+        #    if(var_plot in ['RSK']):
+        #        perc = df_dev[f'{var_plot}p'].round(1).values[0]
+        #        title = f'{title}<br>Kl. Monatsumme: {df_clim[var_plot].round(1).values[0]} Abweichung: {df_dev[f"{var_plot}_dev"].round(1).values[0]} ({perc}%)'
+        #    else:
+        #        dev = df_dev[f'{var_plot}_dev'].round(2).values
+        #        title = f'{title}<br>Kl. Monatmittel: {df_dev[var_plot].values} ({dev})'
+
+        fig = go.Figure()
+
+
+        fig.add_trace(go.Bar(
+            x=df_in.index,
+            y=df_in[var_plot].values,
+            name=self.plot_title_dict[var_plot],
+            marker_color='blue'  # may set via dict
+        ))
+
+        if(var_plot in ['RSK']):
+            fig.add_trace(go.Scatter(
+                x=df_in.index,
+                y=cumsum,
+                name=self.plot_title_dict[f'{var_plot}c'],
+                line=dict(
+                    width=2
+                )
+            ))
+            fig.add_trace(go.Scatter(
+                x=df_in.index,
+                y=cumsumy,
+                name=self.plot_title_dict[f'{var_plot}cy'],
+                line=dict(
+                    width=2
+                )
+            ))
+
+        fig.update_layout(
+            xaxis_tickangle=-45,
+            hovermode="x",
+            dragmode="zoom",
+            title=title,
+            yaxis_title=self.plot_unit_dict[var_plot],
+            xaxis_title="Datum",
+            height=490,
+            #template="plotly_white",
+            #template="plotly_dark",
+            template="seaborn",
+            legend=dict(
+                orientation='h',
+                x=0.01,
+                y=0.97,
+                traceorder='normal',
+                font=dict(
+                    size=12,
+                )
+            ),
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(
+                            count=1,
+                            label='1m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=2,
+                            label='2m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=6,
+                            label='6m',
+                            step='month',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='1 Jahr',
+                            step='year',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='Akt Jahr',
+                            step='year',
+                            stepmode='todate'
+                        ),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=False
+                ),
+                type='date'
+            )
+        )
+
+        # set initial date
+        fig.update_xaxes(
+            range=[df_in.index[-62],df_in.index[-1]],
+            type='date'
+        )
+
+        # set initial y limits
+        if(var_plot in ['RSK']):
+            fig.update_yaxes(
+                range=[df_in[var_plot].min(),cumsum[-62:-1].max()+10.]
+            )
+        else:
+            fig.update_yaxes(
+                range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
+            )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}.html"
+
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
+class fol_map:
+    def __init__(self, 
+                 start_coords=(51.0,10.0),
+                 z_start=6.9,
+                 map_tile = 'OpenStreetMap',
+                 debug = False
+                ):
+        """Class with folium map 
+        Arguments:
+            start_coords:  Start coordinates of folium map; default: (51.0,10.0)
+            z_start:       Zoom Start; default: 6.9
+            map_tile:      Map Tile of Folium map; default: 'OpenStreetMap'
+            debug:         Prints some extra output
+        """
+        self.start_coords = start_coords
+        self.z_start      = z_start
+        self.map_tile     = map_tile
+        self.debug        = debug
+
+    def create_map(self,**kwargs):
+        """Creates map instance"""
+        start_coords = kwargs.get('start_coords')
+        if(start_coords is None):
+            start_coords = self.start_coords
+        zoom_start = kwargs.get('zoom_start')
+        if(zoom_start is None):
+            zoom_start = self.z_start
+        map_tile = kwargs.get('map_tile')
+        if(map_tile is None):
+            map_tile = self.map_tile
+        control_scale = kwargs.get('control_scale')
+        if(control_scale is None):
+            control_scale = True
+
+        if(self.debug):
+            print("Create Folium Map")
+            print("Start Coords ", start_coords)
+            print("Zoom ",zoom_start," Map tile: ", map_tile," Contrl Scale ",control_scale)
+
+        self.m = folium.Map(start_coords,zoom_start=zoom_start,tiles=map_tile,control_scale=control_scale)
+
+
+    def finalize_map_controls(self):
+        """Add controlls at final step"""
+
+        plugins.Fullscreen(
+            position='topright',
+            title='Expand me',
+            title_cancel='Exit me',
+            force_separate_button=True
+        ).add_to(self.m)
+
+        folium.LayerControl(collapsed=True).add_to(self.m)
+
+
+    def map_cluster(self,markergroup,**kwargs):
+        """
+        prepares map for marker cluster
+        Arguments:
+            markergroup: Groups of markers
+        """
+
+        try:
+            self.m
+        except:
+            self.create_map()
+        
+        control = kwargs.get('control')
+        if(control is None):
+            control = False
+
+        self.mcg = folium.plugins.MarkerCluster(control=control)
+        self.m.add_child(self.mcg)
+
+        # save markergroup for later purpose
+        self.markergroup = markergroup
+
+        self.subcluster =  []
+        for i, marker in enumerate(markergroup):
+            self.subcluster.append(folium.plugins.FeatureGroupSubGroup(self.mcg, marker))
+            self.m.add_child(self.subcluster[i])
+
+    def add_val_cluster(self,loc,cname=None,popup_key=None,i=None,icon=None,icon_col=None):
+        """
+        Add a value to a cluster
+        Arguments:
+            loc  : Location of Marker [lat,lon]
+            cname: Name of Cluster, default None --> if None i has to be given
+            popup_key: popup text (also html possible like iframe)
+            i    : ith - place in markergroup which was given for map_cluster
+                   default None --> Item is searched each time
+            icon: Displayed icon on folium map
+            icon_col: icon color
+        """
+
+        if(i is None and cname is None):
+            print("Please specify at least the name of markergroup")
+            return
+
+        if(i is None):
+            i = self.markergroup.index(cname)
+
+        if(icon_col is None):
+            icon_col = 'blue'
+
+        if(icon is None):
+            icon = folium.Icon(color=icon_col)
+
+        if(self.debug):
+            print("icon")
+            print("i ", i)
+            print("icon_col ", icon_col)
+            print("loc ", loc)
+            print("popup ",popup_key)
+        folium.Marker(location=loc,popup=popup_key,icon=icon).add_to(self.subcluster[i])
+
+    def save_map(self,filename):
+        """
+        Saves map to given destiny
+        Arguments:
+            filename:  file destination 
+        """
+
+        if(self.debug):
+            print(f"Save Map to {filename}")
+        self.m.save(filename)
