@@ -47,7 +47,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import locale
 
-from ..helper.hfunctions import moving_average
+from ..helper.hfunctions import moving_average, write_exc_info
 from ..constants.filedata import PLOT_NAME_CONV
 
 # activate seaborn plotting settings
@@ -56,6 +56,36 @@ sns.set_style("whitegrid", {'axes.grid': False,'axes.edgecolor':'1.0'})
 #sns.set_style("whitegrid", {'axes.grid': False})
 #sns.set_context('talk')
 
+# Some helper functions
+
+def normalize_colormap(cmap,value,vmin=-1.0,vmax=1.0,return_norm=False,ret_hex=False):
+    """
+    returns rgba value of given cmap and value
+    Arguments:
+        cmap:   Colormap
+        value:  Value to normalize
+        vmin:   Minimum Range (default -1)
+        vmax:   Maximum Range (default  1)
+        return_norm: Return norm function to use it outside of this function
+        return_hex:  Return hex value instead of rgba 
+    """
+
+    norm = mc.Normalize(vmin,vmax)
+    if(return_norm):
+        return norm
+
+    # check if cmap is string otherwise asume it is already colormap
+    if(isinstance(cmap,str)):
+        cmap = cm.get_cmap(cmap)
+
+    # get colormap rgba
+    if(ret_hex):
+        return mc.rgb2hex(cmap(norm(value)))
+    else:
+        return cmap(norm(value))
+
+
+# Class
 class plot_handler(dict):
     def __init__(self,
                  plot_dir,
@@ -1401,14 +1431,30 @@ class plot_handler(dict):
 
 
 class plotly_class:
-    def __init__(self):
+    def __init__(self,source=None,creator=None):
+
+        self.source = source
+        self.creator = creator
         self.plot_unit_dict = {
                     'RSK':'mm',
+                    'RWS_10':'mm',
+                    'RWS_10c':'mm',
+                    'PP_10':'hPa',
                     'SDK':'h',
+                    'TD_10':'\u00B0C',
+                    'TT_10':'\u00B0C',
+                    'RF_10':'%',
+                    'TM5_10':'\u00B0C',
                     'TMK':'\u00B0C',
                     'TNK':'\u00B0C',
                     'TXK':'\u00B0C'
                     }
+
+        self.plot_line_color = {
+                    'TT_10':'#ff0000',
+                    'TD_10':'#4287f5',
+                    'TM5_10':'#820000'
+        }
 
         self.plot_title_dict={
                     'RSK':'Niederschlag',
@@ -1417,8 +1463,16 @@ class plotly_class:
                     'RSKcy':'kum. Niederschlag (J)',
                     'TMK':'Tagesmitteltemperatur',
                     'TNK':'Tagesminimumtemperatur',
-                    'TXK':'Tageshöchstemperatur'
+                    'TXK':'Tageshöchstemperatur',
+                    'PP_10':'Luftdruck',
+                    'TT_10':'Temperatur (2m)',
+                    'TD_10':'Taupunkt',
+                    'RF_10':'Luftfeuchtigkeit',
+                    'TM5_10':'Temperatur (5cm)',
+                    'RWS_10c':'kum. Niederschlag',
+                    'RWS_10':'Niederschlag'
                     }
+        
 
 
     def plot_act_year_ts_sumvar(self,df_in,
@@ -1591,6 +1645,10 @@ class plotly_class:
         ## TODO take leap year into account
         values[0:len(df_in[df_in.index.year == year_in])] = df_in[df_in.index.year == year_in][var_plot].values
 
+        # get min max year of data
+        year_b = df_in.index.year[0]
+        year_e = df_in.index.year[-2]
+
         if(title is None):
             title = self.plot_title_dict[var_plot]
 
@@ -1603,7 +1661,7 @@ class plotly_class:
                 x=date_range,
                 y=df_climstats.query('stat == "min"')[var_plot].values,
                 #fill='tonexty',
-                name=f'min',
+                name=f'min {year_b}-{year_e}',
                 line=dict(color=minmax_col),
                 opacity=0.6
             ))
@@ -1612,7 +1670,7 @@ class plotly_class:
                 x=date_range,
                 y=df_climstats.query('stat == "max"')[var_plot].values,
                 fill='tonexty',
-                name=f'max',
+                name=f'max {year_b}-{year_e}',
                 mode='lines',
                 line_color=minmax_col,
                 opacity=0.6
@@ -2025,6 +2083,131 @@ class plotly_class:
         # write to html
         fig.write_html(filename,config={'displaylogo':False})
 
+    def plot_10m_timeseries_pltly(self,df_in,
+                                   var_plot,
+                                   title=None,
+                                   filename=None):
+        """Plots timeseries
+        Arguments:
+            df_in: DataFrame with timeseries data
+            var_plot: Variable to plot
+            title:  If there is a specific title
+            filename: Give an filename
+        """
+
+        fig = go.Figure()
+
+        if(var_plot == 'RWS_10'):
+            fig.add_trace(go.Bar(
+                x=df_in.index,
+                y=df_in[var_plot].values,
+                name=self.plot_title_dict[var_plot],
+                marker_color='blue'
+            ))
+            fig.add_trace(go.Scatter(
+                x=df_in.index,
+                y=df_in[var_plot].groupby(df_in.index.day).cumsum().values,
+                name=self.plot_title_dict[f'{var_plot}c'],
+                line=dict(color='red',width=4)
+            ))
+        elif(isinstance(var_plot,list)):
+
+            for var in var_plot:
+                try:
+                    fig.add_trace(go.Scatter(
+                        x=df_in.index,
+                        y=df_in[var].values,
+                        name=self.plot_title_dict[var],
+                        line_shape='spline',
+                        line=dict(color=self.plot_line_color[var],width=4)
+                    ))
+                except:
+                    write_exc_info()
+        else:
+            fig.add_trace(go.Scatter(
+                x=df_in.index,
+                y=df_in[var_plot].values,
+                name=self.plot_title_dict[var_plot],
+                line=dict(color='red',width=4)
+            ))
+
+        if(isinstance(var_plot,list)):
+            var = var_plot[0]
+        else:
+            var = var_plot
+
+        fig.update_layout(
+            title=title,
+            yaxis_title=self.plot_unit_dict[var],
+            legend=dict(
+                orientation='h',
+                x=0.01,
+                y=0.97,
+                traceorder='normal',
+                font=dict(
+                    size=12,
+                )
+            ),
+            xaxis=dict(
+                rangeselector=dict(
+                    buttons=list([
+                        dict(
+                            count=1,
+                            label='1h',
+                            step='hour',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=2,
+                            label='2h',
+                            step='hour',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=4,
+                            label='4h',
+                            step='hour',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=6,
+                            label='6h',
+                            step='hour',
+                            stepmode='backward'
+                        ),
+                        dict(
+                            count=1,
+                            label='1d',
+                            step='day',
+                            stepmode='backward'
+                        ),
+                        dict(step="all")
+                    ])
+                ),
+                rangeslider=dict(
+                    visible=False
+                ),
+                type='date'
+            )
+        )
+
+        # set initial date
+        #fig.update_xaxes(
+        #    range=[df_in.index[-62],df_in.index[-1]],
+        #    type='date'
+        #)
+
+        fig.update_yaxes(
+            range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
+        )
+
+        # create filename if none is given
+        if(filename is None):
+            filename = f"{var_plot}.html"
+
+        # write to html
+        fig.write_html(filename,config={'displaylogo':False})
+
 class fol_map:
     def __init__(self, 
                  start_coords=(51.0,10.0),
@@ -2065,7 +2248,8 @@ class fol_map:
             print("Zoom ",zoom_start," Map tile: ", map_tile," Contrl Scale ",control_scale)
 
         self.m = folium.Map(start_coords,zoom_start=zoom_start,tiles=map_tile,control_scale=control_scale)
-
+        if(map_tile != 'OpenStreetMap'):
+            folium.TileLayer('OpenStreetMap').add_to(self.m)
 
     def finalize_map_controls(self):
         """Add controlls at final step"""
@@ -2106,6 +2290,31 @@ class fol_map:
         for i, marker in enumerate(markergroup):
             self.subcluster.append(folium.plugins.FeatureGroupSubGroup(self.mcg, marker))
             self.m.add_child(self.subcluster[i])
+
+    def add_val_marker(self,loc,value,cname=None,popup_key=None,i=None,icon_col=None):
+        """
+        Add maker with value as marker
+        Arguments: 
+            loc:    Location of Marker [lat,lon]
+            cname:  Name of Cluster, default None --> if None i has to be given
+            popup_key: popup text (also html possible like iframe)
+            i    : ith - place in markergroup which was given for map_cluster
+                   default None --> Item is searched each time
+            icon_col: icon color
+        """
+
+        if(icon_col is None):
+            icon_col = 'blue'
+
+        # Create circle
+        html_circ = f"""
+            <div style="font-size: 12pt; color: {icon_col};">
+                {value}
+            </div>"""
+        icon = folium.DivIcon(html=html_circ)
+        
+        folium.Marker(location=loc,popup=popup_key,icon=icon).add_to(self.m)
+        #folium.Circle(location=loc,popup=popup_key,radius=4000,color=icon_col,fill_color=icon_col).add_to(self.m)
 
     def add_val_cluster(self,loc,cname=None,popup_key=None,i=None,icon=None,icon_col=None):
         """

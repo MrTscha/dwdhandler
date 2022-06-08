@@ -17,8 +17,12 @@ import datetime
 import shutil
 import sqlite3
 import numpy as np
-from pyproj import Proj
-from pyproj import Transformer
+try:
+    from pyproj import Proj
+    from pyproj import Transformer
+    lproj = True
+except:
+    lproj = False
 
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
@@ -239,10 +243,15 @@ class dow_handler(dict):
         return f'regional_averages_{REG_CONV_MAP[self.par]}_{time}.txt'
 
     def create_station_filename(self,key):
-        """ Creates file location on ftp """
+        """ Creates file location on ftp 
+        TODO: adapt 
+        """
 
         if(self.period == 'recent'):
-            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            if(self.resolution == '10_minutes' and self.par == 'precipitation'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            else:
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
         elif(self.period == 'now'):
             if(self.par == 'precipitation'): ## may be the Name Conversation Map should be restructured! that it contains already the period and then self.par
                 return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
@@ -256,7 +265,8 @@ class dow_handler(dict):
             cvon = self.get_obj_station(key,obj='von').strftime('%Y%m%d')
             tbis = self.get_obj_station(key,obj='bis')
             if(tbis.year == datetime.datetime.now().year):
-                cbis = '{}1231'.format(tbis.year-2)
+                year = (datetime.datetime.now() + datetime.timedelta(days=-500)).year
+                cbis = '{}1231'.format(year)
             else:
                 cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
             return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'

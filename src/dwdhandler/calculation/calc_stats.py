@@ -17,7 +17,7 @@ import pandas as pd
 
 #local modules
 from ..constants.filedata import *
-from ..helper.hfunctions import write_sqlite, write_exc_info
+from ..helper.hfunctions import write_sqlite, write_exc_info, drop_table
 
 # create class for station data
 class station_data_handler(dict):
@@ -379,6 +379,58 @@ class station_data_handler(dict):
         if(not self.lsqlite_prep and not force):
             print("execute prepare_to_sqlite first or use force=True")
             return
+
+    def delete_clim_sqlite(self,clim_norms=None):
+        """Loop over all tables containing climate data and delete them
+        Arguments:
+        -------------------------------------
+            clim_norms: Specify special normal periods as desired --> starting year as list
+        """
+
+        if(clim_norms is None):
+            clim_norms = self.default_clim_norms
+
+        filename = self.base_dir+STATION_FOLDER+SQLITEFILESTAT
+        
+        for years in clim_norms:
+            #delete daily vals
+            if(self.ldebug):
+                print("Delete daily clim vals")
+            try:
+                tabname  = f'{self.tabname_c}_daily_{years}'
+                drop_table(tabname,filename)
+            except:
+                write_exc_info()
+
+            # delete monthly vals
+            if(self.ldebug):
+                print("Delete monthly clim vals")
+            try:
+                tabname  = f'{self.tabname_c}_monthly_{years}'
+                drop_table(tabname,filename)
+            except:
+                write_exc_info()
+
+            #delete yearly vals
+            if(self.ldebug):
+                print("Write yearly clim vals")
+            try:
+                tabname  = f'{self.tabname_c}_yearly_{years}'
+                drop_table(tabname,filename)
+            except:
+                write_exc_info()
+
+        try:
+            tabname  = f'{self.tabname_c}_daily_climstats'
+            drop_table(tabname,filename)
+        except:
+            write_exc_info()
+
+        try:
+            tabname  = f'{self.tabname_c}_monthly_climstats'
+            drop_table(tabname,filename)
+        except:
+            write_exc_info()
 
     def write_all_clim_sqlite(self,key,clim_norms=None,force=False):
         """Loop over DataFrames containing climatic normal periods

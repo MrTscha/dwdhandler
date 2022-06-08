@@ -202,6 +202,31 @@ def list_files(dir_in, ending='',only_files=False):
 def moving_average(x, w):
     return np.ma.convolve(x, np.ma.ones(w), 'valid') / w
 
+def drop_table(tabname=None,
+               filename=None,
+               debug=False):
+    """Drop table with given tabname
+    Arguments:
+    ------------------------------------
+        tabname: Table to delete (Default None and if None it returns without doing anything)
+        filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+        debug:    Some additional output
+    """
+    if(filename is None):
+        print("No filename given")
+        return
+
+    if(tabname is None):
+        print("No tablename given")
+        return
+
+    if(debug):
+        print(f"Try to open: {filename}")
+
+    con = sqlite3.connect(filename,uri=True)
+    sqlexec = f"DROP TABLE {tabname}"
+    con.close()
+
 def write_sqlite(df_in,key,
               tabname=None,
               filename=None,
@@ -219,14 +244,14 @@ def write_sqlite(df_in,key,
         print("No filename given")
         return
 
+    if(tabname is None):
+        print("No tablename given")
+        return
+
     if(debug):
         print(f"Try to open: {filename}")
 
     con = sqlite3.connect(filename,uri=True)
-
-    if(tabname is None):
-        print("No table name given")
-        return
 
     lnew = True
 
@@ -238,7 +263,8 @@ def write_sqlite(df_in,key,
 
         df_old = pd.read_sql_query(sqlexec,con)
         df_old.drop_duplicates(inplace=True)
-        df_test = pd.concat([df_old,df_in]).drop_duplicates().reset_index(drop=True)
+        df_old.sort_index(inplace=True)
+        df_test = pd.concat([df_old,df_in]).reset_index(drop=True).drop_duplicates()
         df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
         df_test.drop(columns='_merge',inplace=True)
         df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
