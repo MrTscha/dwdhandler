@@ -9,6 +9,7 @@ Created on Thu Jun 08 17:45:40 2020
 """
 
 #import system modules
+from functools import partial
 from sys import exit, float_repr_style, stdout, exc_info
 import os
 from numpy.lib.arraysetops import isin
@@ -17,6 +18,10 @@ import datetime
 import shutil
 import sqlite3
 import numpy as np
+
+from itertools import product
+from multiprocessing import Pool, cpu_count
+
 try:
     from pyproj import Proj
     from pyproj import Transformer
@@ -28,7 +33,7 @@ except:
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
 from .constants.filedata import *
 from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
-from .helper.hfunctions import check_create_dir, list_files, read_station_list, unzip_file, update_progress, write_sqlite
+from .helper.hfunctions import check_create_dir, delete_sqlite_where, list_files, read_station_list, unzip_file, update_progress, write_sqlite, delete_sqlite_where, open_database
 from .helper.ftp import cftp
 
 class dow_handler(dict):
@@ -222,10 +227,15 @@ class dow_handler(dict):
             if(self.period == 'now'):
                 if(self.par == 'solar'):
                     return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_sd{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+                elif(self.par == 'extreme_temperature'):
+                    return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_tx{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
                 else:
                     return f'zehn_{NAME_CONVERSATION_MAP[self.period]}_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
             else:
-                return f'zehn_min_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
+                if(self.par == 'extreme_temperature'):
+                    return f'zehn_min_tx{NAME_CONVERSATION_MAP["meta_file_stationen"]}' ## TODO The conversation maps should contain all of this
+                else:
+                    return f'zehn_min_{NAME_CONVERSATION_MAP[self.par].lower()}{NAME_CONVERSATION_MAP["meta_file_stationen"]}' 
         else:
             return f'{NAME_CONVERSATION_MAP[self.par]}_{NAME_CONVERSATION_MAP[self.resolution+f"_meta"]}{NAME_CONVERSATION_MAP["meta_file_stationen"]}'
 
@@ -793,7 +803,56 @@ class dow_handler(dict):
 
         return np_data
 
-    def retrieve_dwd_station(self,key_arr,to_sqlite=True):
+    def retrieve_dwd_station_mp(self,key_arr,to_sqlite=True,**kwargs):
+        """Wrapper function for multiprocessing"""
+
+        assert isinstance(key_arr, list)
+
+        if(self.debug):
+            print("Multiprocessing retrieve Stations")
+
+        # Prepare processing
+
+        processes = kwargs.get('processes')
+        if(processes is None):
+            num_cpus = cpu_count()
+        else:
+            num_cpus = processes
+
+
+        print(f"Use {num_cpus} processors")
+
+        # Create the pool
+        process_pool = Pool(processes=num_cpus)
+
+        args = partial(self.retrieve_dwd_station,lretnew=True,lmulti=True)
+
+        # Start processes in the pool
+        dfs = process_pool.map(args,key_arr)
+
+        process_pool.join()
+        process_pool.close()
+
+        # concat dataframes
+        df_tot = pd.concat(dfs, ignore_index=True)
+
+        if(self.debug):
+            print("MP Write complete retrieved data")
+
+        filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+        write_sqlite(df_tot, -9999,
+                    tabname=self.tabname,
+                    filename=filenamesql,
+                    debug=self.debug)
+
+
+        try:
+            shutil.rmtree(self.pathdlocaltmp)
+        except OSError as e:
+            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
+
+
+    def retrieve_dwd_station(self,key_arr,to_sqlite=True,**kwargs):
         """ Retrieves DWD Station data 
             key_arr:   IDs of stations to retrieve, 1D-Array
             to_sqlite: Saves data within SQLITE databank
@@ -801,6 +860,8 @@ class dow_handler(dict):
 
         # test types of input parameters
         assert isinstance(key_arr, list)
+
+        print(f"Len key_arr {len(key_arr)}")
 
         check_create_dir(self.pathdlocal)
         check_create_dir(self.pathdlocaltmp)
@@ -814,6 +875,24 @@ class dow_handler(dict):
         ii = 0
         i_tot = float(len(key_arr))
         not_in_list = []
+
+        lmulti = kwargs.get('lmulti')
+        if(lmulti is None):
+            lmulti = False
+
+        lretnew = kwargs.get('lretnew')
+        if(lretnew is None):
+            lretnew = False
+
+        lcompd = kwargs.get('lcompd')
+        if(lcompd is None):
+            lcompd = True
+        
+        ldelactdate = kwargs.get('ldelactdate')
+        if(ldelactdate is None):
+            ldelactdate = False
+
+        datedelval = kwargs.get('datedelval')
 
         for key in key_arr:
             update_progress(ii/i_tot)
@@ -830,13 +909,29 @@ class dow_handler(dict):
                 df_tmp = self.get_station_df_csv(os.getcwd())
                 filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
                 #tabname = f"{self.par}_{self.resolution}"
-                write_sqlite(df_tmp, key, 
+                if(lretnew):
+                    df_tmp = write_sqlite(df_tmp, key, 
                           tabname=self.tabname,
                           filename=filenamesql,
+                          lretnew=lretnew,
+                          lcompd=lcompd,
+                          debug=self.debug) ## TODO, what if sqlite is not used?
+                    try:
+                        df_tot = pd.concat([df_tot,df_tmp])
+                    except Exception as excp:
+                        print(excp)
+                        df_tot = df_tmp.copy()
+                else:
+                    write_sqlite(df_tmp, key, 
+                          tabname=self.tabname,
+                          filename=filenamesql,
+                          lcompd=lcompd,
                           debug=self.debug) ## TODO, what if sqlite is not used?
             except Exception as Excp:
+                print(Excp)
                 print(f"{self.pathremote+filename} not found\n")
                 not_in_list.append(self.pathremote+filename)
+
             os.chdir('../')
 
         self.stations_not_found = not_in_list
@@ -844,18 +939,42 @@ class dow_handler(dict):
         metaftp.close_ftp()
 
         os.chdir(self.home_dir)
+        
+        if(lretnew and not lmulti):
+            if(self.debug):
+                print("Write complete retrieved data")
 
-        try:
-            shutil.rmtree(self.pathdlocaltmp)
-        except OSError as e:
-            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
+            if(ldelactdate):
+                if(datedelval is None):
+                    datedelval = df_tot['MESS_DATUM'].min()
+
+                delete_sqlite_where(tabname=self.tabname,
+                                    filename=filenamesql,
+                                    col='MESS_DATUM',
+                                    cond='>=',
+                                    value=datedelval,
+                                    debug=self.debug)
+
+            write_sqlite(df_tot, -9999,
+                        tabname=self.tabname,
+                        filename=filenamesql,
+                        debug=self.debug)
+        
+        if(lmulti):
+            return df_tot
+
+        if(not lmulti):
+            try:
+                shutil.rmtree(self.pathdlocaltmp)
+            except OSError as e:
+                print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
     def get_dwd_station_data(self,key,mask_FillVal=True):
         """ Get Data from sqlite database """
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = sqlite3.connect(filename,uri=True)
+        con = open_database(filename,debug=self.debug)
 
         tabname = f"{self.par}_{self.resolution}"
 
@@ -907,7 +1026,7 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = sqlite3.connect(filename,uri=True)
+        con = open_database(filename,debug=self.debug)
 
         df_data = pd.read_sql_query(sqlexec, con)
 
@@ -949,7 +1068,7 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = sqlite3.connect(filename,uri=True)
+        con = open_database(filename,debug=self.debug)
 
         tabname = f"{self.par}_{self.resolution}"
 
@@ -961,9 +1080,11 @@ class dow_handler(dict):
                   "GROUP BY STATIONS_ID, MESS_DATUM )"
 
         if(self.debug):
+            print(sqlexc)
             print("Clear database")
 
         con.execute(sqlexc)
+        con.commit()
 
         con.close()
 
