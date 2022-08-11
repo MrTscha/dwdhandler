@@ -178,6 +178,7 @@ NAME_CONVERSATION_MAP = {
     'cloudiness':'N',
     'dew_point':'TD',
     'extreme_wind':'FX',
+    'extreme_temperature':'extrema_temp',
     'moisture':'TF',
     'precipitation':'RR',
     'pressure':'P0',
