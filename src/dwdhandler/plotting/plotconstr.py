@@ -11,7 +11,6 @@ Created on Thu Dec 05 11:40:40 2021
 import pty
 from re import A
 from sqlite3 import Timestamp
-#from turtle import color
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -421,6 +420,63 @@ class plot_handler(dict):
                     print(f"Could not read shape file {self.shape_dir+self.shape_fil}")
             return
 
+    def plot_single_raster_data(self,lons,lats,data,varp,
+                        ptype='abs',
+                        ryear=None,
+                        title=None,
+                        dmean=False,
+                        dsource=True,
+                        pcmap=None,
+                        pextend=None,
+                        plevel=None,
+                        save_pref=None,
+                        **kwargs):
+        """Plots only a single raster map"""
+
+        fig, ax = plt.subplots(1,1, figsize=self.figsize,
+                                subplot_kw={'projection':ccrs.PlateCarree()})
+
+        if(pcmap is None):
+            pcmap = self.cmap_dict[varp][ptype]
+
+        if(pextend is None):
+            pextend = 'both'
+
+        if(plevel is None):
+            plevel = np.arange(self.vminmax_dict[varp][ptype]['vmin'],
+                               self.vminmax_dict[varp][ptype]['vmax']+self.vminmax_dict[varp][ptype]['vdd'],
+                               self.vminmax_dict[varp][ptype]['vdd'])
+        
+        im = self.plot_raster_data(lons, lats, data,
+                                   varp=varp,ptype=ptype,
+                                   ax=ax,title=title,
+                                   dmean=dmean, cmap=pcmap,
+                                   extend=pextend,levels=plevel,
+                                   **kwargs)
+
+        ax.axis('off')
+        cax = plt.axes([0.85,0.25,0.01,0.35])
+        cb  = plt.colorbar(im,cax=cax)
+        cb.set_label(self.unit_dict[varp])
+
+        if(dsource):
+            #sax = plt.axes([0.93,0.20,0.01,0.5])
+            #plt.text(0.45,-0.1,'Datengrundlage:DWD',fontsize=10,transform=cax.transAxes)
+            plt.text(0.95,0.15,'Datengrundlage: DWD',fontsize=10,transform=ax.transAxes)
+        plt.text(0.95,0.1,f'Visualisierung: {self.creator}',fontsize=10,transform=ax.transAxes)
+
+        if(save_pref is None):
+            save_pref = 'single'
+
+        filename = f"{self.plot_dir}{save_pref}_{varp}_year_{ryear}_{ptype}.png"
+
+        if(self.debug):
+            print(f"Save to: {filename}")
+        plt.savefig(filename,bbox_inches='tight',pad_inches=0)
+        #plt.show()
+        # After all close figure
+        plt.close(fig) 
+
     def plot_raster_data(self,lons,lats,data,varp,
                          ptype='abs',
                          ax=None,
@@ -563,7 +619,8 @@ class plot_handler(dict):
         # add dwd as source
         if(dsource):
             #sax = plt.axes([0.93,0.20,0.01,0.5])
-            plt.text(0.5,-0.1,'Datengrundlage:DWD',fontsize=10,transform=cax.transAxes)
+            plt.text(0.45,-0.1,'Datengrundlage:DWD',fontsize=10,transform=cax.transAxes)
+        plt.text(1.048,0.1,f'Visualisierung: {self.creator}',fontsize=10,transform=ax.transAxes)
 
         if(save_pref is None):
             save_pref = 'array'
@@ -1443,8 +1500,12 @@ class plotly_class:
                     'SDK':'h',
                     'TD_10':'\u00B0C',
                     'TT_10':'\u00B0C',
+                    'TX_10':'\u00B0C',
+                    'TN_10':'\u00B0C',
                     'RF_10':'%',
                     'TM5_10':'\u00B0C',
+                    'TX5_10':'\u00B0C',
+                    'TN5_10':'\u00B0C',
                     'TMK':'\u00B0C',
                     'TNK':'\u00B0C',
                     'TXK':'\u00B0C'
@@ -1452,8 +1513,12 @@ class plotly_class:
 
         self.plot_line_color = {
                     'TT_10':'#ff0000',
+                    'TX_10':'#ff0000',
+                    'TN_10':'#ff0000',
                     'TD_10':'#4287f5',
-                    'TM5_10':'#820000'
+                    'TM5_10':'#820000',
+                    'TX5_10':'#820000',
+                    'TN5_10':'#820000'
         }
 
         self.plot_title_dict={
@@ -1465,10 +1530,14 @@ class plotly_class:
                     'TNK':'Tagesminimumtemperatur',
                     'TXK':'Tageshöchstemperatur',
                     'PP_10':'Luftdruck',
-                    'TT_10':'Temperatur (2m)',
-                    'TD_10':'Taupunkt',
+                    'TT_10':'10min Mittel Temperatur (2m)',
+                    'TX_10':'10min Max Temperatur (2m)',
+                    'TN_10':'10min Min Temperatur (2m)',
+                    'TD_10':'Taupunkt (2m)',
                     'RF_10':'Luftfeuchtigkeit',
-                    'TM5_10':'Temperatur (5cm)',
+                    'TM5_10':'10min Mittel Temperatur (5cm)',
+                    'TX5_10':'10min Max Temperatur (5cm)',
+                    'TN5_10':'10min Min Temperatur (5cm)',
                     'RWS_10c':'kum. Niederschlag',
                     'RWS_10':'Niederschlag'
                     }
@@ -2104,12 +2173,18 @@ class plotly_class:
                 name=self.plot_title_dict[var_plot],
                 marker_color='blue'
             ))
+            rws_cumsum = df_in[var_plot].groupby(df_in.index.day).cumsum().values
             fig.add_trace(go.Scatter(
                 x=df_in.index,
-                y=df_in[var_plot].groupby(df_in.index.day).cumsum().values,
+                y=df_in[f'{var_plot}c'].values,
                 name=self.plot_title_dict[f'{var_plot}c'],
                 line=dict(color='red',width=4)
             ))
+
+            # update init y axis limits
+            fig.update_yaxes(
+                range=[0.0,df_in[f'{var_plot}c'].max()+6.]
+            )
         elif(isinstance(var_plot,list)):
 
             for var in var_plot:
@@ -2123,6 +2198,11 @@ class plotly_class:
                     ))
                 except:
                     write_exc_info()
+
+            # update init y axis limits
+            fig.update_yaxes(
+                range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+3.0]
+            )
         else:
             fig.add_trace(go.Scatter(
                 x=df_in.index,
@@ -2130,6 +2210,11 @@ class plotly_class:
                 name=self.plot_title_dict[var_plot],
                 line=dict(color='red',width=4)
             ))
+
+            # update init y axis limits
+            fig.update_yaxes(
+                range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+3.0]
+            )
 
         if(isinstance(var_plot,list)):
             var = var_plot[0]
@@ -2191,15 +2276,10 @@ class plotly_class:
             )
         )
 
-        # set initial date
         #fig.update_xaxes(
         #    range=[df_in.index[-62],df_in.index[-1]],
         #    type='date'
         #)
-
-        fig.update_yaxes(
-            range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
-        )
 
         # create filename if none is given
         if(filename is None):
@@ -2291,7 +2371,7 @@ class fol_map:
             self.subcluster.append(folium.plugins.FeatureGroupSubGroup(self.mcg, marker))
             self.m.add_child(self.subcluster[i])
 
-    def add_val_marker(self,loc,value,cname=None,popup_key=None,i=None,icon_col=None):
+    def add_val_marker(self,loc,value,cname=None,popup_key=None,i=None,icon_col=None,tooltip=None):
         """
         Add maker with value as marker
         Arguments: 
@@ -2312,8 +2392,11 @@ class fol_map:
                 {value}
             </div>"""
         icon = folium.DivIcon(html=html_circ)
-        
-        folium.Marker(location=loc,popup=popup_key,icon=icon).add_to(self.m)
+
+        if(tooltip is None):
+            folium.Marker(location=loc,popup=popup_key,icon=icon).add_to(self.m)
+        else:
+            folium.Marker(location=loc,popup=popup_key,icon=icon,tooltip=tooltip).add_to(self.m)
         #folium.Circle(location=loc,popup=popup_key,radius=4000,color=icon_col,fill_color=icon_col).add_to(self.m)
 
     def add_val_cluster(self,loc,cname=None,popup_key=None,i=None,icon=None,icon_col=None):
