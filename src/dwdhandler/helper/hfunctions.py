@@ -202,6 +202,24 @@ def list_files(dir_in, ending='',only_files=False):
 def moving_average(x, w):
     return np.ma.convolve(x, np.ma.ones(w), 'valid') / w
 
+def open_database(filename=None,
+                  debug=False):
+    """Open Database
+    Arguments:
+    ------------------------------------
+        filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+        debug:    Some additional output
+    returns
+        con:      Sqlite connection
+    """
+    con = sqlite3.connect(filename,uri=True)
+
+    con.execute('''PRAGMA synchronous = EXTRA''')
+    con.execute('''PRAGMA journal_mode = WAL''')
+    con.commit()
+
+    return con
+
 def drop_table(tabname=None,
                filename=None,
                debug=False):
@@ -223,19 +241,23 @@ def drop_table(tabname=None,
     if(debug):
         print(f"Try to open: {filename}")
 
-    con = sqlite3.connect(filename,uri=True)
+    con = open_database(filename,debug=debug) 
     sqlexec = f"DROP TABLE {tabname}"
+    con.execute()
+    con.commit()
     con.close()
 
-def write_sqlite(df_in,key,
-              tabname=None,
-              filename=None,
-              debug=False):
-    """ Save data to sqlite
-    df_in:   DataFrame 
-    key:     key of Station
+def delete_sqlite_where(tabname=None,
+                        filename=None,
+                        col=None,
+                        value=None,
+                        cond=None,
+                        debug=False):
+    """ Delete data with where condition
     tabname: Table to write to (Default None and if None it returns without doing anything)
     filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+    col:      Column Name
+    cond:     Condition where data is deleted
     debug:    Some additional output
     """
 
@@ -251,34 +273,88 @@ def write_sqlite(df_in,key,
     if(debug):
         print(f"Try to open: {filename}")
 
-    con = sqlite3.connect(filename,uri=True)
+    con = open_database(filename,debug=debug) 
+    sqlexec = f"DELETE from {tabname} WHERE {col} {cond} {value}"
+
+    if(debug):
+        print(f"Execute: {sqlexec}")
+
+    con.execute(sqlexec)
+    con.commit()
+
+    con.close()
+
+def write_sqlite(df_in,key,
+              tabname=None,
+              filename=None,
+              lretnew=False,
+              lcompd=True,
+              debug=False):
+    """ Save data to sqlite
+    df_in:   DataFrame 
+    key:     key of Station
+    tabname: Table to write to (Default None and if None it returns without doing anything)
+    filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+    lretnew:  Return only new values
+    lcompd:   Get data from Database, then compare and finaly only write new data
+    debug:    Some additional output
+    """
+    ## TODO! Change the way to write the data! 
+    ## concat everything to one new dataframe, so database is not locked every writing of each station
+    ## so return data which is not in database and do not write to database!
+
+    if(filename is None):
+        #filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
+        print("No filename given")
+        return
+
+    if(tabname is None):
+        print("No tablename given")
+        return
+
+    if(debug):
+        print(f"Try to open: {filename}")
+
+    con = open_database(filename)
 
     lnew = True
 
-    try:
-        sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
+    if(lcompd):
+        try:
+            sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
+            if(debug):
+                print("Compare Sets")
+                print(sqlexec)
+
+            df_old = pd.read_sql_query(sqlexec,con)
+            df_old.drop_duplicates(inplace=True)
+            df_old.sort_index(inplace=True)
+            df_test = pd.concat([df_old,df_in]).reset_index(drop=True).drop_duplicates()
+            df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
+            df_test.drop(columns='_merge',inplace=True)
+            df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
+            lnew = False
+
+        except Exception as Excp:
+            lnew = True  # if above fails, there seems to be no tab according to this name
+            if(debug):
+                print(Excp)
+            if(lretnew):
+                df_test = df_in
+    else:
+        # no comparison only fire data into database
         if(debug):
-            print("Compare Sets")
-            print(sqlexec)
+            print("No data check")
+        lnew = True
+        df_test = df_in
 
-        df_old = pd.read_sql_query(sqlexec,con)
-        df_old.drop_duplicates(inplace=True)
-        df_old.sort_index(inplace=True)
-        df_test = pd.concat([df_old,df_in]).reset_index(drop=True).drop_duplicates()
-        df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
-        df_test.drop(columns='_merge',inplace=True)
-        df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
-        lnew = False
-
-    except Exception as Excp:
-        lnew = True  # if above fails, there seems to be no tab according to this name
-        if(debug):
-            print(Excp)
-
-    if(lnew):
-        df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi')
+    if(lnew and not lretnew):
+        df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi', if_exists='append')
 
     con.close()
+
+    if(lretnew):
+        return df_test
 
 def write_exc_info():
     exc_type, exc_obj, exc_tb = exc_info()
