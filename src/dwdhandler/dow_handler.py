@@ -947,6 +947,7 @@ class dow_handler(dict):
             if(ldelactdate):
                 if(datedelval is None):
                     datedelval = df_tot['MESS_DATUM'].min()
+                    print(datedelval)
 
                 delete_sqlite_where(tabname=self.tabname,
                                     filename=filenamesql,

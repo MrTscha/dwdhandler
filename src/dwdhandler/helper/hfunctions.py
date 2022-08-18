@@ -214,8 +214,8 @@ def open_database(filename=None,
     """
     con = sqlite3.connect(filename,uri=True)
 
-    con.execute('''PRAGMA synchronous = EXTRA''')
-    con.execute('''PRAGMA journal_mode = WAL''')
+    #con.execute('''PRAGMA synchronous = EXTRA''')
+    #con.execute('''PRAGMA journal_mode = WAL''')
     con.commit()
 
     return con

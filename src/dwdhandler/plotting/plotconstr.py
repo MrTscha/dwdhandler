@@ -1518,7 +1518,17 @@ class plotly_class:
                     'TD_10':'#4287f5',
                     'TM5_10':'#820000',
                     'TX5_10':'#820000',
-                    'TN5_10':'#820000'
+                    'TN5_10':'#4287f5'
+        }
+
+        self.plot_dash = {
+                    'TT_10':None,
+                    'TX_10':'dot',
+                    'TN_10':'dot',
+                    'TD_10':None,
+                    'TM5_10':None,
+                    'TX5_10':'dot',
+                    'TN5_10':'dot'
         }
 
         self.plot_title_dict={
@@ -2194,7 +2204,7 @@ class plotly_class:
                         y=df_in[var].values,
                         name=self.plot_title_dict[var],
                         line_shape='spline',
-                        line=dict(color=self.plot_line_color[var],width=4)
+                        line=dict(color=self.plot_line_color[var],dash=self.plot_dash[var],width=4)
                     ))
                 except:
                     write_exc_info()
