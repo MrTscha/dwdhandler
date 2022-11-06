@@ -205,21 +205,30 @@ class dow_handler(dict):
         # check if dir already exists
         check_create_dir(self.pathmlocal)
         # Try to download Metadatafile
-        metaftp = cftp(SERVERNAME)
-        metaftp.open_ftp()
-        metaftp.cwd_ftp(self.pathremote)
-        os.chdir(self.pathmlocal)
+        try:
+            metaftp = cftp(SERVERNAME)
+            metaftp.open_ftp()
+            metaftp.cwd_ftp(self.pathremote)
+            os.chdir(self.pathmlocal)
 
-        if(self.debug):
-            print(f"Retrieve {self.pathremote+filename}")
+            if(self.debug):
+                print(f"Retrieve {self.pathremote+filename}")
 
-        metaftp.save_file(filename,filename)
+            metaftp.save_file(filename,filename)
         
-        metaftp.close_ftp()
+            metaftp.close_ftp()
+        except Exception as Excp:
+            print("Something went wrong during downloading Metadata")
+            print(Excp)
 
         os.chdir(self.home_dir)
 
-        self.df_station_list = read_station_list(self.pathmlocal,filename)
+        try:
+            self.df_station_list = read_station_list(self.pathmlocal,filename)
+        except Exception as Excp:
+            print("Something went wrong during reading Metadata")
+            print(Excp)
+            self.df_station_list = pd.DataFrame()
 
     def create_station_metaname(self):
 
