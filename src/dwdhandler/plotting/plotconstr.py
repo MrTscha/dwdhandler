@@ -46,7 +46,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import locale
 
-from ..helper.hfunctions import moving_average, write_exc_info
+from ..helper.hfunctions import moving_average, write_exc_info, kwargs_val
 from ..constants.filedata import PLOT_NAME_CONV
 
 # activate seaborn plotting settings
@@ -93,7 +93,8 @@ class plot_handler(dict):
                  debug=False,
                  creator=None,
                  source=None,
-                 figsize=None):
+                 figsize=None,
+                 **kwargs):
         # safe init settings
         self.plot_dir = plot_dir
         self.shape_dir = shape_dir
@@ -104,6 +105,10 @@ class plot_handler(dict):
         if(figsize is None):
             self.figsize = (12,8)
 
+        #
+        self.shape_zorder = kwargs.get("shape_zorder")
+        if(self.shape_zorder is None):
+            self.shape_zorder = 2
 
         # Create month array
         self.ymonth_arr = [f'{x:02d}' for x in range(1,13)]
@@ -496,7 +501,7 @@ class plot_handler(dict):
 
         try:
             ax.add_geometries(adm1_shapes, ccrs.PlateCarree(),
-                              edgecolor='k', facecolor='none', alpha=0.6,zorder=1,linewidth=0.5)    
+                              edgecolor='k', facecolor='none', alpha=0.6,zorder=self.shape_zorder,linewidth=0.5)    
         except Exception as Excp:
             if(self.debug):
                 print("Could not plot shape geometries")
@@ -769,7 +774,7 @@ class plot_handler(dict):
         
         try:
             ax.add_geometries(adm1_shapes, ccrs.PlateCarree(),
-                              edgecolor='k', facecolor='none', alpha=0.6,zorder=1,linewidth=0.5)    
+                              edgecolor='k', facecolor='none', alpha=0.6,zorder=self.shape_zorder,linewidth=0.5)    
         except Exception as Excp:
             if(self.debug):
                 print("Could not plot shape geometries")
@@ -1141,7 +1146,7 @@ class plot_handler(dict):
 
     def plot_regavg_year_tps(self,date_arr,temp,prec,sd,
                              temp_dev,prec_dev,sd_dev,
-                             title=None):
+                             title=None,**kwargs):
         """Plots DWD regional average evoluation
            of given temperature, precipitation and sunduration array
            and stripes (deviation), for precipitation and sun duration it will be calculated to percental deviation
@@ -1154,6 +1159,9 @@ class plot_handler(dict):
            sd_dev:   sun duration deviation with same dimensionalty as date_arr
         """
 
+        move_avg = kwargs_val('move_avg',5,**kwargs)
+        file_suffix = kwargs_val('file_suffix',None,**kwargs)
+
         fig, axs = plt.subplots(3,2,figsize=(14,10))
 
         fsyl_size = 14
@@ -1164,9 +1172,10 @@ class plot_handler(dict):
         ax = axs[0,0]
         ax.plot_date(date_arr,temp,'.',color='k',label='Mitteltemperatur')
         tmp_arr = np.full_like(temp,-999.)
-        tmp_arr[4:] = moving_average(temp,5)
+        #tmp_arr[4:] = moving_average(temp,5)
+        tmp_arr[move_avg-1:] = moving_average(temp,move_avg)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
-        ax.plot_date(date_arr,tmp_arr,'-',color='tomato',label='Gleitendes Mittel (5j)')
+        ax.plot_date(date_arr,tmp_arr,'-',color='tomato',label=f'Gleitendes Mittel ({move_avg}j)')
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
@@ -1189,9 +1198,10 @@ class plot_handler(dict):
         ax = axs[1,0]
         ax.plot_date(date_arr,prec,'.',color='k',label='Niederschlagssumme')
         tmp_arr = np.full_like(temp,-999.)
-        tmp_arr[4:] = moving_average(prec,5)
+        #tmp_arr[4:] = moving_average(prec,5)
+        tmp_arr[move_avg-1:] = moving_average(prec,move_avg)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
-        ax.plot_date(date_arr,tmp_arr,'-',color='royalblue',label='Gleitendes Mittel (5j)')
+        ax.plot_date(date_arr,tmp_arr,'-',color='royalblue',label=f'Gleitendes Mittel ({move_avg}j)')
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
@@ -1216,12 +1226,13 @@ class plot_handler(dict):
         ax = axs[2,0]
         ax.plot_date(date_arr,sd,'.',color='k',label='Sonnenscheindauer')
         tmp_arr = np.full_like(sd,-999.)
-        tmp_arr[4:] = moving_average(sd,5)
+        #tmp_arr[4:] = moving_average(sd,5)
+        tmp_arr[move_avg-1:] = moving_average(sd,move_avg)
         #print(sd)
         tmp_arr = np.ma.masked_where(tmp_arr == -999.,tmp_arr)
         # to avoid error message replace mask with nan
         tmp_arr = tmp_arr.filled(np.nan)
-        ax.plot_date(date_arr,tmp_arr,'-',color='orange',label='Gleitendes Mittel (5j)')
+        ax.plot_date(date_arr,tmp_arr,'-',color='orange',label=f'Gleitendes Mittel ({move_avg}j)')
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xlim(date_arr[0],date_arr[-1])
@@ -1253,7 +1264,10 @@ class plot_handler(dict):
         # final adjustments
         plt.subplots_adjust(left=0.1, bottom=0.1, right=0.89, top=0.88, wspace=0.05, hspace=0.15) 
 
-        filename = f"{self.plot_dir}/regyear_temp_prec_sd.png"
+        if(file_suffix is None):
+            filename = f"{self.plot_dir}/regyear_temp_prec_sd.png"
+        else:
+            filename = f"{self.plot_dir}/regyear_temp_prec_sd_{file_suffix}.png"
 
         if(self.debug):
             print(f"Save to: {filename}")
@@ -1614,6 +1628,7 @@ class plotly_class:
             x=date_range,
             y=values_cumsm,
             name='kum. Monatssumme',
+            line_shape='spline',
             line=dict(color='Coral')
         ))
 
@@ -1621,6 +1636,7 @@ class plotly_class:
             x=date_range,
             y=values_cumsy,
             name='kum. Jahressumme',
+            line_shape='spline',
             line=dict(color='indigo')
         ))
 
@@ -1631,6 +1647,7 @@ class plotly_class:
                 y=df_clim_daily[var_plot].groupby(date_range.month).cumsum().values,
                 mode='lines',
                 line_color='SlateBlue',
+                line_shape='spline',
                 name=f'Monatssumme {clim_period}'
             ))
 
@@ -1639,6 +1656,7 @@ class plotly_class:
                 y=df_clim_daily[var_plot].cumsum().values,
                 mode='lines',
                 line_color='SteelBlue',
+                line_shape='spline',
                 name=f'Jahressumme {clim_period}'
             ))
 
@@ -1742,6 +1760,7 @@ class plotly_class:
                 #fill='tonexty',
                 name=f'min {year_b}-{year_e}',
                 line=dict(color=minmax_col),
+                line_shape='spline',
                 opacity=0.6
             ))
 
@@ -1752,6 +1771,7 @@ class plotly_class:
                 name=f'max {year_b}-{year_e}',
                 mode='lines',
                 line_color=minmax_col,
+                line_shape='spline',
                 opacity=0.6
             ))
 
@@ -1762,6 +1782,7 @@ class plotly_class:
                 #fill='tonexty',
                 name=f'10. Perz.',
                 mode='lines',
+                line_shape='spline',
                 line_color=perz_color,
                 opacity=0.75
             ))
@@ -1772,6 +1793,7 @@ class plotly_class:
                 fill='tonexty',
                 name=f'90. Perz.',
                 mode='lines',
+                line_shape='spline',
                 line_color=perz_color,
                 opacity=0.75
             ))
@@ -1792,6 +1814,7 @@ class plotly_class:
             name=f'{clim_period}',
             mode='lines',
             line_color='black',
+            line_shape='spline',
             opacity=0.95
         ))
 
@@ -2188,6 +2211,7 @@ class plotly_class:
                 x=df_in.index,
                 y=df_in[f'{var_plot}c'].values,
                 name=self.plot_title_dict[f'{var_plot}c'],
+                line_shape='spline',
                 line=dict(color='red',width=4)
             ))
 
