@@ -360,3 +360,23 @@ def write_exc_info():
     exc_type, exc_obj, exc_tb = exc_info()
     fname = split(exc_tb.tb_frame.f_code.co_filename)[1]
     print(exc_type, fname, exc_tb.tb_lineno)
+
+def kwargs_val(parameter, def_val, **kwargs):
+    """checks **kwargs for given parameter and not given it returns given default value
+    Arguments:
+        parameter:  Parameter which should be checked 
+        def_val:    Default Value for given parameter
+        **kwargs:   **kwargs
+    Return:
+        parameter value: def_val in case of none parameter given, instead value given through **kwargs
+
+    Example:
+        val = kwargs_val('imax',5,**kwargs)
+        --> return 5 (def_val) if 'imax' is not given in **kwargs
+        --> return value of 'imax' given by **kwargs
+    """
+
+    if(kwargs.get(parameter) is None):
+        return def_val
+    else:
+        return kwargs.get(parameter)
