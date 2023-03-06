@@ -19,21 +19,27 @@ import shutil
 import sqlite3
 import numpy as np
 
-from itertools import product
-from multiprocessing import Pool, cpu_count
-
 try:
+    import pyproj
     from pyproj import Proj
-    from pyproj import Transformer
     lproj = True
 except:
     lproj = False
+try:
+    from pyproj import Transformer
+    ltransform = True
+except:
+    ltransform = False
 
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
 from .constants.filedata import *
 from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
-from .helper.hfunctions import check_create_dir, delete_sqlite_where, list_files, read_station_list, unzip_file, update_progress, write_sqlite, delete_sqlite_where, open_database
+from .helper.hfunctions import (check_create_dir, delete_sqlite_where, 
+                                list_files, read_station_list, unzip_file, update_progress, 
+                                write_sqlite, delete_sqlite_where, open_database,
+                                check_for_table, create_table_res,
+                                write_sqlite_data)
 from .helper.ftp import cftp
 
 class dow_handler(dict):
@@ -269,11 +275,15 @@ class dow_handler(dict):
         if(self.period == 'recent'):
             if(self.resolution == '10_minutes' and self.par == 'precipitation'):
                 return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            elif(self.resolution == '10_minutes' and self.par == 'extreme_wind'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_extrema_wind_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
             else:
                 return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
         elif(self.period == 'now'):
             if(self.par == 'precipitation'): ## may be the Name Conversation Map should be restructured! that it contains already the period and then self.par
                 return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            elif(self.resolution == '10_minutes' and self.par == 'extreme_wind'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_extrema_wind_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
             elif(self.par == 'wind'):
                 return f'{NAME_CONVERSATION_MAP[self.resolution]}_wind_{key}_{NAME_CONVERSATION_MAP[self.period]}.zip'
             elif(self.par == 'solar'):
@@ -288,7 +298,12 @@ class dow_handler(dict):
                 cbis = '{}1231'.format(year)
             else:
                 cbis = self.get_obj_station(key,obj='bis').strftime('%Y%m%d')
-            return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            if(self.resolution == '10_minutes' and self.par == 'extreme_wind'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_nieder_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            elif(self.resolution == '10_minutes' and self.par == 'extreme_wind'):
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_extrema_wind_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
+            else:
+                return f'{NAME_CONVERSATION_MAP[self.resolution]}_{NAME_CONVERSATION_MAP[self.par]}_{key}_{cvon}_{cbis}_{NAME_CONVERSATION_MAP[self.period]}.zip'
 
     def create_nwp_filename(self,hour,mlayer=NWPMAXMOLEV,player=1000):
         """ Creates file location on ftp nwp data """
@@ -721,12 +736,17 @@ class dow_handler(dict):
             uses projection of raster and project to lon lat
         """
 
+        if(not lproj):
+            print("pyproj seems not installed; Return")
+            return
+
         inProj  = Proj({'init': f'{self.crs_in}'})
         outProj = Proj({'init': 'epsg:4326'})
 
-        transformer = Transformer.from_proj(inProj,outProj)
+        if(ltransform):
+            transformer = Transformer.from_proj(inProj,outProj)
 
-        transform = transformer.transform
+            transform = transformer.transform
 
         grid_x = np.zeros((self.rncols))
         grid_y = np.zeros((self.rnrows))
@@ -745,7 +765,11 @@ class dow_handler(dict):
         for ii in range(self.rncols):
             for jj in range(self.rnrows):
                 #tmp_lon, tmp_lat = transform(grid_x[ii],grid_y[jj])
-                lons[ii,jj], lats[ii,jj] = transform(grid_x[ii],grid_y[jj])
+                if(ltransform):
+                    lons[ii,jj], lats[ii,jj] = transform(grid_x[ii],grid_y[jj])
+                else:
+                    lons[ii,jj], lats[ii,jj] = pyproj.transform(inProj, outProj, grid_x[ii],grid_y[jj])
+
 
             update_progress(ii/self.rncols)
 
@@ -812,55 +836,6 @@ class dow_handler(dict):
 
         return np_data
 
-    def retrieve_dwd_station_mp(self,key_arr,to_sqlite=True,**kwargs):
-        """Wrapper function for multiprocessing"""
-
-        assert isinstance(key_arr, list)
-
-        if(self.debug):
-            print("Multiprocessing retrieve Stations")
-
-        # Prepare processing
-
-        processes = kwargs.get('processes')
-        if(processes is None):
-            num_cpus = cpu_count()
-        else:
-            num_cpus = processes
-
-
-        print(f"Use {num_cpus} processors")
-
-        # Create the pool
-        process_pool = Pool(processes=num_cpus)
-
-        args = partial(self.retrieve_dwd_station,lretnew=True,lmulti=True)
-
-        # Start processes in the pool
-        dfs = process_pool.map(args,key_arr)
-
-        process_pool.join()
-        process_pool.close()
-
-        # concat dataframes
-        df_tot = pd.concat(dfs, ignore_index=True)
-
-        if(self.debug):
-            print("MP Write complete retrieved data")
-
-        filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
-        write_sqlite(df_tot, -9999,
-                    tabname=self.tabname,
-                    filename=filenamesql,
-                    debug=self.debug)
-
-
-        try:
-            shutil.rmtree(self.pathdlocaltmp)
-        except OSError as e:
-            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
-
-
     def retrieve_dwd_station(self,key_arr,to_sqlite=True,**kwargs):
         """ Retrieves DWD Station data 
             key_arr:   IDs of stations to retrieve, 1D-Array
@@ -885,23 +860,19 @@ class dow_handler(dict):
         i_tot = float(len(key_arr))
         not_in_list = []
 
-        lmulti = kwargs.get('lmulti')
-        if(lmulti is None):
-            lmulti = False
+        filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        lretnew = kwargs.get('lretnew')
-        if(lretnew is None):
-            lretnew = False
+        con = open_database(filenamesql)
 
-        lcompd = kwargs.get('lcompd')
-        if(lcompd is None):
-            lcompd = True
-        
-        ldelactdate = kwargs.get('ldelactdate')
-        if(ldelactdate is None):
-            ldelactdate = False
+        if(check_for_table(con,self.tabname)):
+            print(f"Table {self.tabname} exists")
+            lcreate=False
+        else:
+            print(f"Create Table {self.tabname}")
+            lcreate=True
 
-        datedelval = kwargs.get('datedelval')
+        if(lcreate):
+            create_table_res(con,self.resolution, self.par)
 
         for key in key_arr:
             update_progress(ii/i_tot)
@@ -912,35 +883,17 @@ class dow_handler(dict):
             if(self.debug):
                 print(f"Retrieve: {self.pathremote+filename}")
 
-            try:
+            try: 
                 metaftp.save_file(filename,filename)
                 unzip_file(filename)
                 df_tmp = self.get_station_df_csv(os.getcwd())
-                filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
-                #tabname = f"{self.par}_{self.resolution}"
-                if(lretnew):
-                    df_tmp = write_sqlite(df_tmp, key, 
-                          tabname=self.tabname,
-                          filename=filenamesql,
-                          lretnew=lretnew,
-                          lcompd=lcompd,
-                          debug=self.debug) ## TODO, what if sqlite is not used?
-                    try:
-                        df_tot = pd.concat([df_tot,df_tmp])
-                    except Exception as excp:
-                        print(excp)
-                        df_tot = df_tmp.copy()
-                else:
-                    write_sqlite(df_tmp, key, 
-                          tabname=self.tabname,
-                          filename=filenamesql,
-                          lcompd=lcompd,
-                          debug=self.debug) ## TODO, what if sqlite is not used?
+                # prepare date to split into year month day ...
+                self.df_tmp = df_tmp
+                write_sqlite_data(df_tmp, con, self.tabname)
             except Exception as Excp:
                 print(Excp)
                 print(f"{self.pathremote+filename} not found\n")
                 not_in_list.append(self.pathremote+filename)
-
             os.chdir('../')
 
         self.stations_not_found = not_in_list
@@ -948,36 +901,12 @@ class dow_handler(dict):
         metaftp.close_ftp()
 
         os.chdir(self.home_dir)
-        
-        if(lretnew and not lmulti):
-            if(self.debug):
-                print("Write complete retrieved data")
 
-            if(ldelactdate):
-                if(datedelval is None):
-                    datedelval = df_tot['MESS_DATUM'].min()
-                    print(datedelval)
+        try:
+            shutil.rmtree(self.pathdlocaltmp)
+        except OSError as e:
+            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
-                delete_sqlite_where(tabname=self.tabname,
-                                    filename=filenamesql,
-                                    col='MESS_DATUM',
-                                    cond='>=',
-                                    value=datedelval,
-                                    debug=self.debug)
-
-            write_sqlite(df_tot, -9999,
-                        tabname=self.tabname,
-                        filename=filenamesql,
-                        debug=self.debug)
-        
-        if(lmulti):
-            return df_tot
-
-        if(not lmulti):
-            try:
-                shutil.rmtree(self.pathdlocaltmp)
-            except OSError as e:
-                print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
     def get_dwd_station_data(self,key,mask_FillVal=True):
         """ Get Data from sqlite database """

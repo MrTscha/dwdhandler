@@ -148,6 +148,7 @@ class plot_handler(dict):
             'radiation_diffus':'Jcm$^2$',
             'radiation_atmo':'Jcm$^2$',
             'sundur_hour':'h',
+            'sunshine_duration':'h',
             'sundur_hour_p':'%',
             'sundur_min':'min',
             'precipitation':'mm',
@@ -176,51 +177,79 @@ class plot_handler(dict):
         #cmap
         self.cmap_dict = {
             'air_temperature_max' :{'abs':cm.seismic,
+                                    'clim':cm.seismic,
                                    'dev':cm.seismic},
             'air_temperature_mean':{'abs':cm.seismic,
+                                    'clim':cm.seismic,
                                    'dev':cm.seismic},
             'air_temperature_min' :{'abs':cm.seismic,
+                                    'clim':cm.seismic,
                                    'dev':cm.seismic},
             'precipitation':{'abs':cm.viridis_r,
+                             'clim':cm.viridis_r,
                              'per':cm.PuOr,
                              'dev':cm.PuOr},
             'precipitation_p':{'abs':cm.viridis_r,
+                               'clim':cm.viridis_r,
                                'per':cm.PuOr,
                                'dev':cm.PuOr},
-            'sunshine_duration':{'abs':cm.viridis_r,
+            'sunshine_duration':{'abs':cm.cividis,
+                                 'clim':cm.cividis,
                              'per':cm.cividis,
-                             'dev':cm.PuOr},
+                             'dev':cm.cividis},
             'sundur_hour'  :{'abs':cm.viridis_r,
+                             'clim':cm.viridis_r,
                              'per':cm.cividis,
                              'dev':cm.PuOr},
             'sundur_hour_p':{'abs':cm.viridis_r,
+                             'clim':cm.viridis_r,
                              'per':cm.cividis,
                              'dev':cm.PuOr},
             'evapo_r'      :{'abs':cm.viridis_r,
+                             'clim':cm.viridis_r,
                              'dev':cm.PuOr},
             'evapo_p'      :{'abs':cm.viridis_r,
+                             'clim':cm.viridis_r,
                              'dev':cm.PuOr},
             'cwb'          :{'abs':cm.PuOr,
+                             'clim':cm.PuOr,
                              'dev':cm.PuOr}
         }
         #level dict
         self.vminmax_dict = {
             'air_temperature_max' :{'abs':
                                           {'vmax':35.0,'vmin':-35.0,'vdd':0.5},
+                                    'clim':
+                                          {'vmax':25.0,'vmin':-25.0,'vdd':0.5},
                                     'dev':
                                           {'vmax':5.0, 'vmin':-5.0, 'vdd':0.1},
                                           },
             'air_temperature_mean':{'abs':
                                           {'vmax':25.0,'vmin':-25.0,'vdd':0.5},
+                                    'clim':
+                                          {'vmax':15.0,'vmin':-15.0,'vdd':0.5},
                                     'dev':
                                           {'vmax':5.0, 'vmin':-5.0, 'vdd':0.1},
                                           },
             'air_temperature_min' :{'abs':
                                           {'vmax':25.0,'vmin':-25.0,'vdd':0.5},
+                                    'clim':
+                                          {'vmax':10.0,'vmin':-10.0,'vdd':0.5},
                                     'dev':
                                           {'vmax':5.0, 'vmin':-5.0, 'vdd':0.1},
                                           },
             'precipitation'       :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'clim':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'dev':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                    'per':
+                                          {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
+                                          },
+            'sunshine_duration'   :{'abs':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'clim':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
@@ -229,6 +258,8 @@ class plot_handler(dict):
                                           },
             'precipitation_p'     :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'clim':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                     'per':
@@ -236,16 +267,22 @@ class plot_handler(dict):
                                           },
             'evapo_p'             :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'clim':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           },
             'evapo_r'             :{'abs':
                                           {'vmax':200.0,'vmin':0.0,'vdd':5},
+                                    'clim':
+                                          {'vmax':200.0,'vmin':0.0,'vdd':5},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           },
             'cwb'                 :{'abs':
-                                          {'vmax':300.0,'vmin':-300.0,'vdd':20},
+                                          {'vmax':200.0,'vmin':-200.0,'vdd':20},
+                                    'clim':
+                                          {'vmax':200.0,'vmin':-200.0,'vdd':20},
                                     'dev':
                                           {'vmax':100.0, 'vmin':-100.0, 'vdd':5},
                                           }
@@ -366,38 +403,52 @@ class plot_handler(dict):
         self.var_title_dict = {
             'air_temperature_max' :{'long' :'Maximale Temperatur [{}]'.format(self.unit_dict['air_temperature_max']),
                                     'abs'  :'$\overline{T_{max}}$',
+                                    'clim' :'$\overline{T_{max}}$',
                                     'dev'  :'$T_{max}$',
                                     'short':'Maximaltemperatur'},
             'air_temperature_mean':{'long' :'Mittlere Temperatur [{}]'.format(self.unit_dict['air_temperature_mean']),
                                     'abs'  :'$\overline{T_{mean}}$',
+                                    'clim' :'$\overline{T_{max}}$',
                                     'dev'  :'$T_{mean}$',
                                     'short':'Mitteltemperatur'},
             'air_temperature_min' :{'long' :'Minimale Temperatur [{}]'.format(self.unit_dict['air_temperature_min']),
                                     'abs'  :'$\overline{T_{min}}$',
+                                    'clim' :'$\overline{T_{max}}$',
                                     'dev'  :'$T_{min}$',
                                     'short':'Minimaltemperatur'},
             'precipitation'       :{'long' :'Niederschlagssumme [{}]'.format(self.unit_dict['precipitation']),
                                     'abs'  :'$P_{mean}$',
+                                    'clim' :'$P_{mean}$',
                                     'dev'  :'$P_{mean}$',
                                     'per'  :'$P_{mean}$',
                                     'short':'Niederschlagssumme'},
             'precipitation_p'     :{'long' :'Niederschlagssumme [{}]'.format(self.unit_dict['precipitation_p']),
                                     'abs'  :'$P_{mean}$',
+                                    'clim' :'$P_{mean}$',
                                     'dev'  :'$P_{mean}$',
                                     'per'  :'$P_{mean}$',
                                     'short':'Niederschlagssumme'},
+            'sunshine_duration'   :{'long' :'Sonnenscheindauer [{}]'.format(self.unit_dict['sunshine_duration']),
+                                    'abs'  :'$SD_{mean}$',
+                                    'clim' :'$SD_{mean}$',
+                                    'dev'  :'$SD_{mean}$',
+                                    'per'  :'$SD_{mean}$',
+                                    'short':'Sonnenscheindauer'},
             'evapo_p'             :{'long' :'Potentielle Verdunstung [{}]'.format(self.unit_dict['evapo_p']),
                                     'abs'  :'$evap_{mean}$',
+                                    'clim' :'$evap_{mean}$',
                                     'dev'  :'$evap_{mean}$',
                                     'per'  :'$evap_{mean}$',
                                     'short':'Pot. Verdunstung'},
             'evapo_r'             :{'long' :'Reale Verdunstung [{}]'.format(self.unit_dict['evapo_r']),
                                     'abs'  :'$evar_{mean}$',
+                                    'clim' :'$evar_{mean}$',
                                     'dev'  :'$evar_{mean}$',
                                     'per'  :'$evar_{mean}$',
                                     'short':'Reale Verdunstung'},
             'cwb'                 :{'long' :'Klimatische Wasserbilanz [{}]'.format(self.unit_dict['cwb']),
                                     'abs'  :'$KWB_{mean}$',
+                                    'clim' :'$KWB_{mean}$',
                                     'dev'  :'$KWB_{mean}$',
                                     'per'  :'$KWB_{mean}$',
                                     'short':'Klimatische Wasserbilanz'},
@@ -654,7 +705,7 @@ class plot_handler(dict):
            data_in: 3D array of data; First index denotes month and can be less than 12 but not greater than 12
            year: Year which is plottet
            varp: Variable which is plottet --> same name as retrieved from DWD
-           ptype: ['abs' or 'dev'] denotes type of data absolute or deviation. Deviation must contain 
+           ptype: ['abs' or 'dev' or 'clim'] denotes type of data absolute or deviation or climate mean values. Deviation must contain 
                   Devation in data_in. This only handels cmap title and so on
            dmean: display mean value of each month within plot
         """
@@ -698,7 +749,8 @@ class plot_handler(dict):
                 print(excp)
                 data_tmp = np.full_like(data_in[0],-999.)
                 alpha = 0.0
-                # nasty bug in matplotlib as all masked values is not possible to plot --> blend out with alpha = 0.0
+                # nasty feature in matplotlib as all masked values is not possible to plot --> blend out with alpha = 0.0
+                # Also we don't want im here, since it is then used for the colorbar, which gives unwanted results
                 self.plot_raster_data(lons,lats, data_tmp,
                                       varp=varp, ptype=ptype,
                                       ax=ax, title=titlestr,
@@ -1101,7 +1153,7 @@ class plot_handler(dict):
             ax.scatter(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],label=f'{date_arr[0].year} - {date_arr[len(date_arr)-2].year}')
             if(ldraw_ell):
                 self.confidence_ellipse(temp_dev[:len(temp_dev)-1],prec_dev[:len(temp_dev)-1],ax,n_std=1.5,edgecolor='k')
-        ax.scatter(temp_dev[-1],prec_dev[-1],color='red',marker='v',label=f'{date_arr[-1].year}',s=120)
+        ax.scatter(temp_dev[-1],prec_dev[-1],color='black',marker='*',label=f'{date_arr[-1].year}',s=200)
 
         ax.axvline(0,color=axlc,zorder=0,alpha=axla,linestyle=axls)
 
@@ -1744,7 +1796,9 @@ class plotly_class:
 
         # get min max year of data
         year_b = df_in.index.year[0]
-        year_e = df_in.index.year[-2]
+        #year_e = df_in.index.year[-2]
+        year_b = np.min(df_in.index.year)
+        year_e = np.max(df_in.index.year) - 1
 
         if(title is None):
             title = self.plot_title_dict[var_plot]
@@ -1926,10 +1980,16 @@ class plotly_class:
         )
 
         # set initial date
-        fig.update_xaxes(
-            range=[df_in.index[-62],df_in.index[-1]],
-            type='date'
-        )
+        try:
+            fig.update_xaxes(
+                range=[df_in.index[-62],df_in.index[-1]],
+                type='date'
+            )
+        except:
+            fig.update_xaxes(
+                range=[df_in.index[-1*(len(df_in.index)-1)],df_in.index[-1]],
+                type='date'
+            )
 
         fig.update_yaxes(
             range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]
@@ -2163,16 +2223,27 @@ class plotly_class:
         )
 
         # set initial date
-        fig.update_xaxes(
-            range=[df_in.index[-62],df_in.index[-1]],
-            type='date'
-        )
+        try:
+            fig.update_xaxes(
+                range=[df_in.index[-62],df_in.index[-1]],
+                type='date'
+            )
+        except:
+            fig.update_xaxes(
+                range=[df_in.index[-1*(len(df_in.index)-1)],df_in.index[-1]],
+                type='date'
+            )
 
         # set initial y limits
         if(var_plot in ['RSK']):
-            fig.update_yaxes(
-                range=[df_in[var_plot].min(),cumsum[-62:-1].max()+10.]
-            )
+            try:
+                fig.update_yaxes(
+                    range=[df_in[var_plot].min(),cumsum[-62:-1].max()+10.]
+                )
+            except:
+                fig.update_yaxes(
+                    range=[df_in[var_plot].min(),cumsum[-2:-1].max()+10.]
+                )
         else:
             fig.update_yaxes(
                 range=[df_in[var_plot].min()-1.0,df_in[var_plot].max()+1.0]

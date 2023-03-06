@@ -169,7 +169,8 @@ RASTER_CONVERSATION_MAP ={
     'evapo_r':'evapo_r',
     'soil_moist':'soil_moist',
     'frost_depth':'frost_depth',
-    'drought_index':'drought_index'
+    'drought_index':'drought_index',
+    'sunshine_duration':'sunshine_duration'
 }
 
 NAME_CONVERSATION_MAP = {

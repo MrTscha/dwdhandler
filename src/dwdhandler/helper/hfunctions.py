@@ -15,6 +15,10 @@ import numpy as np
 import datetime
 import zipfile
 import sqlite3
+from ..constants.constpar import (STATION_VAR_DICT, STATION_INT_VARS, 
+                                  STATION_TEXT_VARS, STATION_PRIMARY_KEYS,
+                                  STATION_NOT_NULL, STATION_DATE_END_VARS,
+                                  DATENAMESTAT,DATENAMESTATEND)
 
 def check_create_dir(dir_in):
     """ Simple check if dir exists, if not create it """
@@ -214,11 +218,39 @@ def open_database(filename=None,
     """
     con = sqlite3.connect(filename,uri=True)
 
-    #con.execute('''PRAGMA synchronous = EXTRA''')
-    #con.execute('''PRAGMA journal_mode = WAL''')
+    con.execute('''PRAGMA synchronous = EXTRA''')
+    con.execute('''PRAGMA journal_mode = WAL''')
     con.commit()
 
     return con
+
+def create_table_res(con,
+                 resolution=None,
+                 par=None,
+                 debug=False):
+    """
+        Create table according to given resolution and parameter
+    Arguments:
+    ------------------------------------
+        con: connection to database
+        resolution: string --> defines resolution (e.g. 10_minutes, hourly, daily...)
+        par: string --> parameter (e.g. air_temperature, precipitation, etc)
+        debug: bool --> some extra output for debugging
+    """
+
+    if(resolution is None):
+        print("No resolution given, return")
+        return
+
+    if(par is None):
+        print("No parameter given, return")
+        return
+
+    create_stmt = create_statement(resolution,par)
+    print(create_stmt)
+
+    con.execute(create_stmt)
+    con.commit()
 
 def drop_table(tabname=None,
                filename=None,
@@ -243,7 +275,7 @@ def drop_table(tabname=None,
 
     con = open_database(filename,debug=debug) 
     sqlexec = f"DROP TABLE {tabname}"
-    con.execute()
+    con.execute(sqlexec)
     con.commit()
     con.close()
 
@@ -284,11 +316,113 @@ def delete_sqlite_where(tabname=None,
 
     con.close()
 
+def write_sqlite_data(data,con, table,
+                      debug=False):
+    """
+        Write data to sqlite
+    Arguments:
+        data: dataframe
+        con:  Connection
+        table: tablename
+    """
+
+    if(debug):
+        print("Write data direct")
+
+    cur = con.cursor()
+    insert_stmt = f"INSERT OR REPLACE INTO {table} ("
+    
+    insert_stmt_t = "VALUES ("
+    for col in data:
+        insert_stmt   += f"{col}, "
+        insert_stmt_t += "?, "
+    
+    # remove trailing comma
+    insert_stmt  = insert_stmt[:-2]
+    insert_stmt_t = insert_stmt_t[:-2]
+    insert_stmt   += ") "
+    insert_stmt_t += ");"
+    insert_stmt += insert_stmt_t
+
+    cur.executemany(insert_stmt,data.values.tolist())
+    con.commit()
+
+def create_statement(resolution,par):
+    """
+    Creates Create Statement of table
+    Arguments:
+        resolution: string --> defines resolution (10_minutes, hourly etc)
+        par: string --> defines parameter (air_temperature, precipitation etc)
+    """
+
+    # init create statement
+    stmt = 'CREATE TABLE IF NOT EXISTS ' 
+    stmt += f'{par}_{resolution} ('
+
+    # vars which are primary key are temporary stored here and later added
+    # this is necessary in case of multiple keys
+    prim_keys = []
+
+    # loop over variables
+    for var in STATION_VAR_DICT[resolution][par]:
+        if(var in STATION_INT_VARS):
+            stmt += f'{var} INT'
+        elif(var in STATION_TEXT_VARS):
+            stmt += f'{var} TEXT'
+        else:
+            stmt += f'{var} REAL'
+
+        if(var in STATION_NOT_NULL):
+            stmt += ' NOT NULL'
+
+        if(var in STATION_PRIMARY_KEYS):
+            prim_keys.append(var)
+
+        stmt += ', '
+    
+    # add GENERATED COLUMNS 
+    # we also have to add the correct name of date column
+    if(par in STATION_DATE_END_VARS):
+        DATE_USE_NAME = DATENAMESTATEND
+    else:
+        DATE_USE_NAME = DATENAMESTAT
+    # Year
+    stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
+    # Month
+    stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
+    # Day
+    stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
+
+    if(resolution in ['hourly','10_minutes']):
+        # Hour
+        stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
+    if(resolution in ['10_minutes']):
+        # Minutes
+        stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
+
+    # are there primary keys? if so add them
+    if(len(prim_keys) > 0):
+        stmt += 'PRIMARY KEY('
+        for var in prim_keys:
+            stmt += f'{var}, '
+        
+        stmt = stmt[:-2]
+        stmt += ')'
+    else:
+        # otherwise only remove last trailing comma
+        stmt = stmt[:-2]
+
+    # add bracket
+    stmt += ')'
+
+    return stmt
+
 def write_sqlite(df_in,key,
               tabname=None,
               filename=None,
               lretnew=False,
               lcompd=True,
+              insertrepl=False,
               debug=False):
     """ Save data to sqlite
     df_in:   DataFrame 
@@ -297,6 +431,7 @@ def write_sqlite(df_in,key,
     filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
     lretnew:  Return only new values
     lcompd:   Get data from Database, then compare and finaly only write new data
+    insertrepl: This is some different approach. It uses 
     debug:    Some additional output
     """
     ## TODO! Change the way to write the data! 
@@ -355,6 +490,26 @@ def write_sqlite(df_in,key,
 
     if(lretnew):
         return df_test
+
+def check_for_table(con,table):
+    """
+        Checks connection if table exists and returns true if so, otherweise false
+    Arguments:
+        con: Connection
+        table: string --> tablename
+    """
+
+    # create cursor object
+    cur = con.cursor()
+
+    # fetch table name
+    listOfTable = cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name = '{table}'").fetchall()
+
+    if(listOfTable == []):
+        # no table present
+        return False
+    else:
+        return True
 
 def write_exc_info():
     exc_type, exc_obj, exc_tb = exc_info()
