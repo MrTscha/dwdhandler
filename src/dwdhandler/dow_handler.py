@@ -38,7 +38,7 @@ from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
 from .helper.hfunctions import (check_create_dir, delete_sqlite_where, 
                                 list_files, read_station_list, unzip_file, update_progress, 
                                 write_sqlite, delete_sqlite_where, open_database,
-                                check_for_table, create_table_res,
+                                check_for_table, create_table_res, create_table_regavg,
                                 write_sqlite_data)
 from .helper.ftp import cftp
 
@@ -179,6 +179,7 @@ class dow_handler(dict):
             self.pathremote = SERVERPATH_REG_GERM+f'{self.resolution}/{self.par}/'
             # create local data to save data
             self.pathdlocal = self.base_dir+REGAVG_FOLDER+f'/{self.resolution}/{self.par}/'
+            self.pathregsql = self.base_dir+REGAVG_FOLDER+'/'
             # create temp directory to avoid clashes of data streams
             self.pathdlocaltmp = self.base_dir+self.tmp_dir
         else: # default
@@ -422,9 +423,23 @@ class dow_handler(dict):
             filenlist.append(self.create_regavg_filename('year'))
 
         # Are the pathes there
-        check_create_dir(self.pathdlocal)
+        #check_create_dir(self.pathdlocal)
+        check_create_dir(self.pathregsql)
+        check_create_dir(self.pathdlocaltmp)
         # Change into directory
-        os.chdir(self.pathdlocal)
+        #os.chdir(self.pathdlocal)
+        os.chdir(self.pathdlocaltmp)
+
+        filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
+
+        con = open_database(filenamesql)
+
+        if(check_for_table(con,self.tabname)):
+            print(f"Table {self.tabname} exists")
+            lcreate=False
+        else:
+            print(f"Create Table {self.tabname}")
+            lcreate=True
 
         # Log in to ftp server
         metaftp = cftp(SERVERNAME)
@@ -437,11 +452,27 @@ class dow_handler(dict):
             if(self.debug):
                 print(f'Retrieve: {self.pathremote+filename}')
             metaftp.save_file(filename,filename)
+            df_tmp = pd.read_csv(filename,delimiter=';',skiprows=[0])
+            df_tmp.rename(columns={'winter':'season','spring':'season','summer':'season','autumn':'season'},inplace=True)
+            df_tmp.drop(columns=df_tmp.columns[df_tmp.columns.str.contains('Unnamed')],inplace=True)
+            df_tmp.drop(columns=df_tmp.columns[df_tmp.columns.str.contains('Jahr.1')],inplace=True)
+            df_tmp.columns = df_tmp.columns.str.replace('-','_')
+            df_tmp.columns = df_tmp.columns.str.replace('/','_')
+            if(lcreate):
+                create_table_regavg(con,resolution=self.resolution,par=self.par,keys=df_tmp.keys())
+            write_sqlite_data(df_tmp, con, self.tabname)
 
         # close ftp connection
         metaftp.close_ftp()
 
+        con.close()
+
         os.chdir(self.home_dir)
+
+        try:
+            shutil.rmtree(self.pathdlocaltmp)
+        except OSError as e:
+            print(f"Error: {self.pathdlocaltmp} : {e.strerror}")
 
     def retrieve_dwd_raster(self,year,month,to_netcdf=False,clim_mean=False):
         """ Retrieves DWD Raster data
@@ -550,11 +581,17 @@ class dow_handler(dict):
             cyeare: End year of climate normal period (default 1990 )
         """
 
+        filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
+        con = open_database(filenamesql)
+
         if(self.resolution == 'annual'):
+
+            sqlexec = f"SELECT * from {self.tabname}"
             # create filename
-            filename = self.create_regavg_filename('year')
+            #filename = self.create_regavg_filename('year')
             # read data and skipping first line
-            df_out = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+            #df_out = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+            df_out = pd.read_sql_query(sqlexec,con=con)
             df_out.index = pd.to_datetime(df_out['Jahr'],format='%Y')
             df_out.index.name = 'Jahr'
             # Jahr are two columns in dataset, so drop the first one because it is an index
@@ -566,16 +603,19 @@ class dow_handler(dict):
             for key in df_out.keys():
                 df_out[f'{key}_dev'] = df_out[key] - df_clim[key]    
         elif(self.resolution == 'seasonal'):
-
+            sqlexec = f"SELECT * from {self.tabname}"
+            df_compl = pd.read_sql_query(sqlexec,con=con)
+            self.df_compl = df_compl
             for season in REGAVGSEASONS:
                 # create filename
-                filename = self.create_regavg_filename(season)
+                #filename = self.create_regavg_filename(season)
                 # read data and skipping first line
-                df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
-                df_tmp.rename(columns={season:'season'},inplace=True)
-                self.df_tmp = df_tmp
+                #df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                #df_tmp = pd.read_sql_query(sqlexec,con=con)
+                #df_tmp.rename(columns={season:'season'},inplace=True)
+                df_tmp = df_compl.query(f"season == {season}")
                 # create climate normal period 
-                df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0)
+                df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0,numeric_only=True)
                 # calculate deviation
                 for key in df_tmp.keys():
                     if(key not in ['season','Jahr']):
@@ -587,11 +627,16 @@ class dow_handler(dict):
             df_out.index = pd.to_datetime(df_out['Jahr'],format='%Y')
             df_out.index.name = 'Jahr'
         elif(self.resolution == 'monthly'):
+            sqlexec = f"SELECT * from {self.tabname}"
+            df_compl = pd.read_sql_query(sqlexec,con=con)
+            self.df_compl = df_compl
             for month in REGAVGMONTHS:
+                month_int = int(month)
                 #create filename
-                filename = self.create_regavg_filename(month)
+                #filename = self.create_regavg_filename(month)
                 # read data and skipping first line
-                df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                #df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
+                df_tmp = df_compl.query(f"Monat == {month_int}")
                 # create climate normal period 
                 df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0)
                 # calculate deviation
@@ -609,11 +654,15 @@ class dow_handler(dict):
             print(f'{self.resolution} is unknown. Not data to return')
             return
 
+
         # Last ; in data leads to this column, so try to drop it
         try:
             df_out.drop(columns=['Unnamed: 19','Unnamed: 19_dev'],inplace=True)
         except:
             pass
+
+        con.close()
+
         return df_out
 
     def read_dwd_raster(self,year,month,netcdf=False,calc_dev=False,clim_mean=False,clim_year_s=None):
