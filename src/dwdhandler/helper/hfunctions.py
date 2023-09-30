@@ -18,6 +18,7 @@ import sqlite3
 from ..constants.constpar import (STATION_VAR_DICT, STATION_INT_VARS, 
                                   STATION_TEXT_VARS, STATION_PRIMARY_KEYS,
                                   STATION_NOT_NULL, STATION_DATE_END_VARS,
+                                  REGAVG_PRIMARY_KEYS,
                                   DATENAMESTAT,DATENAMESTATEND)
 
 def check_create_dir(dir_in):
@@ -224,6 +225,41 @@ def open_database(filename=None,
 
     return con
 
+def create_table_regavg(con,
+                        resolution=None,
+                        par=None,
+                        keys=None,
+                        debug=False):
+    """
+        Create table according to given resolution and parameter
+        regional average
+    Arguments:
+    ------------------------------------
+        con: connection to database
+        resolution: string --> defines resolution (e.g. 10_minutes, hourly, daily...)
+        par: string --> parameter (e.g. air_temperature, precipitation, etc)
+        keys: list --> contains column names from table
+        debug: bool --> some extra output for debugging
+    """
+
+    if(resolution is None):
+        print("No resolution given, return")
+        return
+
+    if(par is None):
+        print("No parameter given, return")
+        return
+
+    if(keys is None):
+        print("No columns given, return")
+        return
+    
+    create_stmt = create_statement(resolution,par,keys)
+    print(create_stmt)
+
+    con.execute(create_stmt)
+    con.commit()
+
 def create_table_res(con,
                  resolution=None,
                  par=None,
@@ -347,7 +383,7 @@ def write_sqlite_data(data,con, table,
     cur.executemany(insert_stmt,data.values.tolist())
     con.commit()
 
-def create_statement(resolution,par):
+def create_statement(resolution,par,keys=None):
     """
     Creates Create Statement of table
     Arguments:
@@ -362,44 +398,58 @@ def create_statement(resolution,par):
     # vars which are primary key are temporary stored here and later added
     # this is necessary in case of multiple keys
     prim_keys = []
+    if(keys is None):
+        # loop over variables
+        for var in STATION_VAR_DICT[resolution][par]:
+            if(var in STATION_INT_VARS):
+                stmt += f'{var} INT'
+            elif(var in STATION_TEXT_VARS):
+                stmt += f'{var} TEXT'
+            else:
+                stmt += f'{var} REAL'
 
-    # loop over variables
-    for var in STATION_VAR_DICT[resolution][par]:
-        if(var in STATION_INT_VARS):
-            stmt += f'{var} INT'
-        elif(var in STATION_TEXT_VARS):
-            stmt += f'{var} TEXT'
+            if(var in STATION_NOT_NULL):
+                stmt += ' NOT NULL'
+
+            if(var in STATION_PRIMARY_KEYS):
+                prim_keys.append(var)
+
+            stmt += ', '
+
+        # add GENERATED COLUMNS 
+        # we also have to add the correct name of date column
+        if(par in STATION_DATE_END_VARS):
+            DATE_USE_NAME = DATENAMESTATEND
         else:
-            stmt += f'{var} REAL'
+            DATE_USE_NAME = DATENAMESTAT
+        # Year
+        stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
+        # Month
+        stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
+        # Day
+        stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
 
-        if(var in STATION_NOT_NULL):
-            stmt += ' NOT NULL'
-
-        if(var in STATION_PRIMARY_KEYS):
-            prim_keys.append(var)
-
-        stmt += ', '
-    
-    # add GENERATED COLUMNS 
-    # we also have to add the correct name of date column
-    if(par in STATION_DATE_END_VARS):
-        DATE_USE_NAME = DATENAMESTATEND
+        if(resolution in ['hourly','10_minutes']):
+            # Hour
+            stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
+        if(resolution in ['10_minutes']):
+            # Minutes
+            stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
     else:
-        DATE_USE_NAME = DATENAMESTAT
-    # Year
-    stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
-    # Month
-    stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
-    # Day
-    stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
+        for key in keys:
+            if(key in ['autumn','spring','winter','summer','season']):
+                stmt += 'season TEXT'
+            elif(key in ['Jahr','Monat']):
+                stmt += f'{key} INT'
+            else:
+                stmt += f'{key} REAL'
 
-    if(resolution in ['hourly','10_minutes']):
-        # Hour
-        stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
-    if(resolution in ['10_minutes']):
-        # Minutes
-        stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
-
+            stmt += ', '
+            if(key in REGAVG_PRIMARY_KEYS):
+                prim_keys.append(key)
+        
+    stmt = stmt.replace('/','_')
+    stmt = stmt.replace('-','_')
     # are there primary keys? if so add them
     if(len(prim_keys) > 0):
         stmt += 'PRIMARY KEY('
@@ -515,23 +565,3 @@ def write_exc_info():
     exc_type, exc_obj, exc_tb = exc_info()
     fname = split(exc_tb.tb_frame.f_code.co_filename)[1]
     print(exc_type, fname, exc_tb.tb_lineno)
-
-def kwargs_val(parameter, def_val, **kwargs):
-    """checks **kwargs for given parameter and not given it returns given default value
-    Arguments:
-        parameter:  Parameter which should be checked 
-        def_val:    Default Value for given parameter
-        **kwargs:   **kwargs
-    Return:
-        parameter value: def_val in case of none parameter given, instead value given through **kwargs
-
-    Example:
-        val = kwargs_val('imax',5,**kwargs)
-        --> return 5 (def_val) if 'imax' is not given in **kwargs
-        --> return value of 'imax' given by **kwargs
-    """
-
-    if(kwargs.get(parameter) is None):
-        return def_val
-    else:
-        return kwargs.get(parameter)
