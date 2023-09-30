@@ -14,6 +14,7 @@ RASTER_FOLDER   = 'raster_data/'
 REGAVG_FOLDER   = 'regavg/'
 NWP_FOLDER      = 'nwp_data/'
 SQLITEFILESTAT  = 'DWD_STATION.sqlite'
+SQLITEREGAVG    = 'DWD_regavg.sqlite'
 
 # Available dtypes
 DTYPEAVAIL = ['station','raster','regavg','nwp']
