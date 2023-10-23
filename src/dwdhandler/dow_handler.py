@@ -596,12 +596,12 @@ class dow_handler(dict):
             df_out.index.name = 'Jahr'
             # Jahr are two columns in dataset, so drop the first one because it is an index
             # drop second one because it is obsolet
-            df_out.drop(columns=['Jahr','Jahr.1'],inplace=True)
+            df_out.drop(columns=['Jahr'],inplace=True)
             # create climate normal period 
             df_clim = df_out[(df_out.index.year >= cyears) & (df_out.index.year <= cyeare)].mean(axis=0)
             # calculate deviation
             for key in df_out.keys():
-                df_out[f'{key}_dev'] = df_out[key] - df_clim[key]    
+                df_out[f'{key}_dev'] = df_out[key] - df_clim[key]
         elif(self.resolution == 'seasonal'):
             sqlexec = f"SELECT * from {self.tabname}"
             df_compl = pd.read_sql_query(sqlexec,con=con)
@@ -613,7 +613,7 @@ class dow_handler(dict):
                 #df_tmp = pd.read_csv(self.pathdlocal+filename,delimiter=';',skiprows=[0])
                 #df_tmp = pd.read_sql_query(sqlexec,con=con)
                 #df_tmp.rename(columns={season:'season'},inplace=True)
-                df_tmp = df_compl.query(f"season == {season}")
+                df_tmp = df_compl.query(f"season == '{season}'")
                 # create climate normal period 
                 df_clim = df_tmp[(df_tmp['Jahr'] >= cyears) & (df_tmp['Jahr'] <= cyeare)].mean(axis=0,numeric_only=True)
                 # calculate deviation

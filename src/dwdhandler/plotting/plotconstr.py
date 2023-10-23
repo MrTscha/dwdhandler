@@ -7,10 +7,6 @@ Created on Thu Dec 05 11:40:40 2021
 @description: This module creates plots
 """
 
-#import system modules
-import pty
-from re import A
-from sqlite3 import Timestamp
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -19,10 +15,13 @@ import matplotlib.gridspec as gridspec
 import matplotlib as mpl
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
+import matplotlib.dates as mdates
 from matplotlib.dates import DateFormatter
 from matplotlib.ticker import MaxNLocator
 import numpy as np
 import seaborn as sns
+
+import json
 
 # try to import folium
 try:
@@ -42,11 +41,11 @@ except:
     lcartopy = False
 
 # import plotly
+from plotly.utils import PlotlyJSONEncoder
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import locale
 
-from ..helper.hfunctions import moving_average, write_exc_info, kwargs_val
+from ..helper.hfunctions import moving_average, write_exc_info
 from ..constants.filedata import PLOT_NAME_CONV
 
 # activate seaborn plotting settings
@@ -1211,8 +1210,8 @@ class plot_handler(dict):
            sd_dev:   sun duration deviation with same dimensionalty as date_arr
         """
 
-        move_avg = kwargs_val('move_avg',5,**kwargs)
-        file_suffix = kwargs_val('file_suffix',None,**kwargs)
+        move_avg = kwargs.get('move_avg',5)
+        file_suffix = kwargs.get('file_suffix')
 
         fig, axs = plt.subplots(3,2,figsize=(14,10))
 
@@ -1330,7 +1329,7 @@ class plot_handler(dict):
 
     def plot_regavg_year(self,date_arr,data_arr,var_in,
                          ptype='abs',pbar=False,pstripes=False,
-                         title=None):
+                         title=None,norm_size=None,file_prefix=None):
         """ Plots DWD regional average on a yearly resolution
             date_arr: Date array (mostly only the year)
             data_arr: Data array
@@ -1338,16 +1337,21 @@ class plot_handler(dict):
             pbar:     Plot data as bar plot (default False)
             pstripes: Plot data as stripes (Ed Hawking stripes) plot (default False)
             title:    Give the plot a title (default is None and therefore a string is generated from self.var_title_dict)
+            norm_size: Give the ylim of plot and normalization values for coloring e.g.[-5,5]
+            file_prefix: apply some prefix to file outpug
         """
 
         fig, ax = plt.subplots(1,1,figsize=(12,6)) 
 
-        norm_size = [self.vminmax_dict_regavgyear[var_in][ptype]['vmin'],self.vminmax_dict_regavgyear[var_in][ptype]['vmax']]
+        if(norm_size is None):
+            norm_size = [self.vminmax_dict_regavgyear[var_in][ptype]['vmin'],self.vminmax_dict_regavgyear[var_in][ptype]['vmax']]
         cmap = self.cmap_dict[var_in][ptype]
         fs_cbar = 12
         datemin = pd.Timestamp(f'{date_arr.year[0]  - 1}-01-01')
         datemax = pd.Timestamp(f'{date_arr.year[-1] + 1}-01-01')
         if(pbar):
+            bbox = ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+            #normalize = self.make_bar_plot(date_arr,data_arr,ax,norm_size,cmap,lretnorm=True,bbox=bbox)
             normalize = self.make_bar_plot(date_arr,data_arr,ax,norm_size,cmap,lretnorm=True)
             cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(1.0,0.5))
             cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
@@ -1362,8 +1366,8 @@ class plot_handler(dict):
             for label in ax.get_xticklabels():
                 label.set_rotation(45)
 
-            ax.text(1.03,0.125,'Daten: DWD',fontsize=8,transform=ax.transAxes)
-            ax.text(1.03,0.1,f'Visualisierung: {self.creator}',fontsize=8,transform=ax.transAxes)
+            ax.text(1.01,0.125,'Daten: DWD',fontsize=8,transform=ax.transAxes)
+            ax.text(1.01,0.1,f'Visualisierung: {self.creator}',fontsize=8,transform=ax.transAxes)
         elif(pstripes):
             self.make_stripe_plot(date_arr,data_arr,ax,cmap,norm_size)
             ax.set_xlim(datemin, datemax)
@@ -1384,7 +1388,10 @@ class plot_handler(dict):
         ax.set_title(title)
         ax.set_xlabel('Jahr')
 
-        filename = f"{self.plot_dir}{varp}_{year}_{ptype}.png"
+        if(file_prefix is None):
+            filename = f"{self.plot_dir}{var_in}_{date_arr[0].year}_{date_arr[-1].year}_{ptype}.png"
+        else:
+            filename = f"{self.plot_dir}{file_prefix}_{var_in}_{date_arr[0].year}_{date_arr[-1].year}_{ptype}.png"
         if(self.debug):
             print(f"Save to: {filename}")
         plt.savefig(filename,bbox_inches='tight',pad_inches=0)
@@ -1392,7 +1399,7 @@ class plot_handler(dict):
         # After all close figure
         plt.close(fig) 
     
-    def make_bar_plot(self,date_in,data_in,ax_in,norm_size,cmap,lretnorm=False):
+    def make_bar_plot(self,date_in,data_in,ax_in,norm_size,cmap,lretnorm=False,bbox=None):
         """ Makes bar plot with given input data
         """
 
@@ -1400,7 +1407,14 @@ class plot_handler(dict):
             colors,normalize = self.make_colors_norm(norm_size,cmap,data_in,lretnorm=lretnorm)
         else:
             colors = self.make_colors_norm(norm_size,cmap,data_in,lretnorm=lretnorm)
-        barplot = ax_in.bar(date_in,data_in,width=200.0,edgecolor='k')
+        #barplot = ax_in.bar(date_in,data_in,width=200.0,edgecolor='k')
+        if(bbox is not None):
+            width = len(data_in) / bbox.width
+            print(width)
+            barplot = ax_in.bar(date_in,data_in,width=width,edgecolor='k')
+        else:
+            barplot = ax_in.bar(date_in,data_in,edgecolor='k')
+
         for i in range(len(colors)):
             barplot[i].set_color(colors[i])
         ax_in.set_ylim(norm_size)
@@ -1552,6 +1566,141 @@ class plot_handler(dict):
         Returns: list (length 3) of decimal values'''
         return [v/256 for v in value]
 
+
+# class to display return period
+
+class plot_return_period:
+    def __init__(self,return_period_class,source=None,creator=None):
+
+        self.returnp_class = return_period_class
+        self.source = source
+        self.creator = creator
+
+    def plot_return_period(self,save_info,
+                           single_plot=True,
+                           var_display='tägl. Niederschlagsmenge',
+                           return_per_plot=200.,
+                           ret_ax=False,
+                           act_val=None,
+                           **kwargs
+                           ):
+        
+        """
+        Arguments:
+            save_info str: additional info which is used for saving the file
+            single_plot bool: Put everythin in a single plot (return period, PDF and Histogram of data)
+            var_display str: String which is added to Plot to describe Variable 
+            return_per_plot scalar: maximum return period value
+            ret_ax bool: return ax of pyplot
+            act_val scalar: Value which is displayed as a red dot in return period diagram
+            **kwargs
+        """
+
+        figsize = kwargs.get('figsize')
+
+        if(figsize is None):
+            if(single_plot):
+                figsize = (11,12)
+            else:
+                figsize = (11,6)
+
+        if(single_plot):
+            fig, ax = plt.subplots(2, 1, figsize=figsize)
+
+        iax = 0
+
+        bins = self.returnp_class.bins
+        hist = self.returnp_class.hist
+        x_range = self.returnp_class.x_range
+        prop = self.returnp_class.prop
+
+        edgecolor = kwargs.get('edgecolor','#4aaaaa')
+
+        if(not single_plot):
+            fig, pax = plt.subplots(figsize=figsize)
+
+            pax.bar(bins[:-1],hist, align='edge', color='blue', edgecolor=edgecolor)
+
+            pax.set_xlabel(var_display)
+            pax.set_ylabel("Häufigkeit")
+            pax.set_title(f"Häufigkeit {var_display}")
+            pax.set_yscale("log")
+
+            plt.savefig(f"Häufigkeit_{save_info}_{self.returnp_class.ftype}.png",bbox_inches='tight')
+            plt.close(fig)
+
+        if(single_plot):
+            pax = ax[0]
+        else:
+            fig, pax = plt.subplots(figsize=figsize)
+
+        pax.bar(bins[:-1], hist, align='edge', color='blue', edgecolor=edgecolor)
+        print(x_range)
+        print(prop)
+        pax.plot(x_range,prop,color='purple',label='PDF',linestyle='--',linewidth=4)
+        pax.grid(True)
+
+        pax.legend(frameon=False)
+
+        pax.set_xlabel(var_display)
+        pax.set_ylabel("Wahrscheinlichkeit")
+        pax.set_title(f"Wahrscheinlichkeit {var_display}")
+
+        if(not single_plot):
+            plt.savefig(f"Wahrscheinlichkeit_{save_info}_{self.returnp_class.ftype}.png",bbox_inches='tight')
+
+            plt.close(fig)
+
+        # return period
+        if(single_plot):
+            pax = ax[1]
+        else:
+            fig, pax = plt.subplots(figsize=figsize)
+
+        return_period = self.returnp_class.return_period
+        return_levels = self.returnp_class.return_levels
+
+        pax.plot(return_period, return_levels,linewidth=4,color='#4B4C4E')
+
+        if(act_val is not None):
+            return_per = self.returnp_class.calc_ret_period(act_val)
+            print(f"{act_val}mm; ret per: {return_per}")
+            pax.scatter(return_per,act_val,color='red',zorder=2,s=140)
+        else:
+            return_per = 0.0
+        pax.grid(True)
+
+        #pax.legend(frameon=False)
+
+        pax.set_xlabel("Wiederkehrzeit")
+        pax.set_ylabel(var_display)
+
+        if(not single_plot):
+            pax.set_title(f"Wiederkehrzeit {var_display}")
+
+        pax.set_xlim(0,np.maximum(return_per_plot,np.floor(return_per+40.0)))
+        ymax = np.ceil(self.returnp_class.calc_return_level(1. - (1./return_per_plot)))
+
+        if(act_val is not None):
+            pax.set_ylim(kwargs.get('return_period_ylim0',0),np.maximum(ymax,np.floor(act_val+40.0)))
+
+        if(not single_plot):
+            plt.savefig(f"Wiederkehrzeit_{save_info}_{self.returnp_class.ftype}.png",bbox_inches='tight')
+
+            plt.close(fig)
+
+        if(single_plot):
+            # adjust subplot
+            plt.subplots_adjust(left=0.1,
+                                bottom=0.1,
+                                right=0.9,
+                                top=0.9,
+                                wspace=0.4,
+                                hspace=0.4)
+            # save single plot
+            plt.savefig(f"Hauf_Wahr_Wieder_{save_info}_{self.returnp_class.ftype}.png",bbox_inches='tight')
+
+        plt.close(fig) # Schließe am Ende alles
 
 class plotly_class:
     def __init__(self,source=None,creator=None):
@@ -2259,13 +2408,15 @@ class plotly_class:
     def plot_10m_timeseries_pltly(self,df_in,
                                    var_plot,
                                    title=None,
-                                   filename=None):
+                                   filename=None,
+                                   returnJson=False):
         """Plots timeseries
         Arguments:
             df_in: DataFrame with timeseries data
             var_plot: Variable to plot
             title:  If there is a specific title
             filename: Give an filename
+            returnJson (bool): Default False, return json plty as json
         """
 
         fig = go.Figure()
@@ -2385,6 +2536,9 @@ class plotly_class:
         #    range=[df_in.index[-62],df_in.index[-1]],
         #    type='date'
         #)
+
+        if(returnJson):
+            return json.dumps(fig,cls=PlotlyJSONEncoder)
 
         # create filename if none is given
         if(filename is None):
