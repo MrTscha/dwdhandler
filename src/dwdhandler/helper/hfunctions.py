@@ -288,6 +288,27 @@ def create_table_res(con,
     con.execute(create_stmt)
     con.commit()
 
+def create_table_res_climstats(con,
+                               resolution,
+                               par,
+                               tablename,
+                               ctype=None,
+                               debug=False):
+    """
+        Create table of climstats according given resolution and parameter
+    Arguments:
+        con: connection to database
+        tablename: str --> tablename to be created
+        debug: bool --> some extra output for debugging
+    """
+
+    create_stmt = create_statement(resolution=resolution,par=par,
+                                   tabname=tablename,lclimstat=True,ctype=ctype)
+    print(tablename)
+    print(create_stmt)
+    con.execute(create_stmt)
+    con.commit()
+
 def drop_table(tabname=None,
                filename=None,
                debug=False):
@@ -383,58 +404,125 @@ def write_sqlite_data(data,con, table,
     cur.executemany(insert_stmt,data.values.tolist())
     con.commit()
 
-def create_statement(resolution,par,keys=None):
+def create_statement(resolution=None,par=None,lclimstat=False,keys=None,ctype=None,tabname=None):
     """
     Creates Create Statement of table
     Arguments:
         resolution: string --> defines resolution (10_minutes, hourly etc)
         par: string --> defines parameter (air_temperature, precipitation etc)
+        climstat: bool --> indicate that climstats table is to be created
+        keys: stringlist --> keys which are used for regional average; default None 
+        ctype: string --> is used to determine if climstats or norm should be created
     """
+
+    if(resolution is None and par is not None):
+        print("Create Statement, no resolution specified, return")
+        return -1
+
+    if(par is None and resolution is not None):
+        print("Create Statement, no par specified, return")
+        return -1
+    
+    if(par is None and resolution is None and tabname is None):
+        print("Not even a table name (tabname) is specified, return")
+        return -1
 
     # init create statement
     stmt = 'CREATE TABLE IF NOT EXISTS ' 
-    stmt += f'{par}_{resolution} ('
+    if(tabname is None):
+        stmt += f'{par}_{resolution} ('
+    else:
+        stmt += f'{tabname} ('
 
     # vars which are primary key are temporary stored here and later added
     # this is necessary in case of multiple keys
     prim_keys = []
     if(keys is None):
-        # loop over variables
+        if(lclimstat):
+            if(ctype == 'climstats'):
+                stmt += 'stat TEXT, '
+                if('monthly' in tabname):
+                    stmt += 'Monat INT, '
+                elif('yearly' in tabname):
+                    stmt += 'Jahr INT, '
+                else:
+                    stmt += 'DOY INT, '
+            elif(ctype == 'norm'):
+                if('monthly' in tabname):
+                    stmt += 'Monat INT, '
+                elif('yearly' in tabname):
+                    stmt += 'Jahr INT, '
+                else:
+                    stmt += 'Tag INT, '
+
+        # loop over variables ## TODO Verhindere das MESS_DATUM bei norm und climstats im CREATE STATEMENT auftaucht
         for var in STATION_VAR_DICT[resolution][par]:
+            loverwrite_not_null = False
+
+            print(var, lclimstat)
+            luse_int_var = not (var in [DATENAMESTAT, DATENAMESTATEND] or not lclimstat)
+            loverwrite_not_null = True
+
+            print(luse_int_var, loverwrite_not_null)
+
             if(var in STATION_INT_VARS):
-                stmt += f'{var} INT'
+                # avoid that MESS_DATUM is used in case of climstats
+                if(luse_int_var):
+                    stmt += f'{var} INT'
+                #stmt += f'{var} INT'
+                loverwrite_not_null = luse_int_var
             elif(var in STATION_TEXT_VARS):
                 stmt += f'{var} TEXT'
             else:
                 stmt += f'{var} REAL'
 
-            if(var in STATION_NOT_NULL):
+            if(var in STATION_NOT_NULL and loverwrite_not_null):
                 stmt += ' NOT NULL'
 
             if(var in STATION_PRIMARY_KEYS):
                 prim_keys.append(var)
 
-            stmt += ', '
+            if(loverwrite_not_null):
+                stmt += ', '
+
+        if(lclimstat):
+            prim_keys.remove(DATENAMESTAT)
+            if(ctype == 'climstats'):
+                prim_keys.append('stat')
+                if('monthly' in tabname):
+                    prim_keys.append('Monat')
+                elif('yearly' in tabname):
+                    prim_keys.append('Jahr')
+                else:
+                    prim_keys.append('DOY')
+            elif(ctype == 'norm'):
+                if('monthly' in tabname):
+                    prim_keys.append('Monat')
+                elif('yearly' in tabname):
+                    prim_keys.append('Jahr')
+                else:
+                    prim_keys.append('Tag')
 
         # add GENERATED COLUMNS 
         # we also have to add the correct name of date column
-        if(par in STATION_DATE_END_VARS):
-            DATE_USE_NAME = DATENAMESTATEND
-        else:
-            DATE_USE_NAME = DATENAMESTAT
-        # Year
-        stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
-        # Month
-        stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
-        # Day
-        stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
+        if(not lclimstat):
+            if(par in STATION_DATE_END_VARS):
+                DATE_USE_NAME = DATENAMESTATEND
+            else:
+                DATE_USE_NAME = DATENAMESTAT
+            # Year
+            stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
+            # Month
+            stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
+            # Day
+            stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
 
-        if(resolution in ['hourly','10_minutes']):
-            # Hour
-            stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
-        if(resolution in ['10_minutes']):
-            # Minutes
-            stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
+            if(resolution in ['hourly','10_minutes']):
+                # Hour
+                stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
+            if(resolution in ['10_minutes']):
+                # Minutes
+                stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
     else:
         for key in keys:
             if(key in ['autumn','spring','winter','summer','season']):
@@ -470,23 +558,16 @@ def create_statement(resolution,par,keys=None):
 def write_sqlite(df_in,key,
               tabname=None,
               filename=None,
-              lretnew=False,
-              lcompd=True,
-              insertrepl=False,
+              linsertrepl=False,
               debug=False):
     """ Save data to sqlite
     df_in:   DataFrame 
     key:     key of Station
     tabname: Table to write to (Default None and if None it returns without doing anything)
     filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
-    lretnew:  Return only new values
-    lcompd:   Get data from Database, then compare and finaly only write new data
-    insertrepl: This is some different approach. It uses 
+    linsertrepl: Replaces old data if data is in the table
     debug:    Some additional output
     """
-    ## TODO! Change the way to write the data! 
-    ## concat everything to one new dataframe, so database is not locked every writing of each station
-    ## so return data which is not in database and do not write to database!
 
     if(filename is None):
         #filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
@@ -502,44 +583,14 @@ def write_sqlite(df_in,key,
 
     con = open_database(filename)
 
-    lnew = True
-
-    if(lcompd):
-        try:
-            sqlexec = f"SELECT * from {tabname} WHERE STATIONS_ID = {key}"
-            if(debug):
-                print("Compare Sets")
-                print(sqlexec)
-
-            df_old = pd.read_sql_query(sqlexec,con)
-            df_old.drop_duplicates(inplace=True)
-            df_old.sort_index(inplace=True)
-            df_test = pd.concat([df_old,df_in]).reset_index(drop=True).drop_duplicates()
-            df_test = df_test.merge(df_old,indicator=True,how='left').loc[lambda x : x['_merge']!='both']
-            df_test.drop(columns='_merge',inplace=True)
-            df_test.to_sql(tabname, con, if_exists="append", index=False,chunksize=1000,method='multi')
-            lnew = False
-
-        except Exception as Excp:
-            lnew = True  # if above fails, there seems to be no tab according to this name
-            if(debug):
-                print(Excp)
-            if(lretnew):
-                df_test = df_in
+    if(linsertrepl):
+        # This drops data if table already exists and replaces the data
+        df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi', if_exists='replace')
     else:
-        # no comparison only fire data into database
-        if(debug):
-            print("No data check")
-        lnew = True
-        df_test = df_in
-
-    if(lnew and not lretnew):
+        # Data is just appended, if data exists
         df_in.to_sql(tabname, con, index=False, chunksize=1000, method='multi', if_exists='append')
 
     con.close()
-
-    if(lretnew):
-        return df_test
 
 def check_for_table(con,table):
     """
