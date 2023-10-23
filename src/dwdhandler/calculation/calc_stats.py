@@ -16,7 +16,9 @@ import pandas as pd
 
 #local modules
 from ..constants.filedata import *
-from ..helper.hfunctions import write_sqlite, write_exc_info, drop_table
+from ..helper.hfunctions import (write_sqlite, write_exc_info, write_sqlite_data,
+                                 drop_table, open_database, 
+                                 check_for_table, create_table_res_climstats)
 
 # create class for station data
 class station_data_handler(dict):
@@ -26,15 +28,17 @@ class station_data_handler(dict):
                  var_sum=False,
                  var_perc=False,
                  var_max=False,
+                 resolution=None,
+                 par=None,
                  base_dir=os.getcwd()+'/'+MAIN_FOLDER,
                  year_spec=None,
                  ldebug=False):
-        """ 
+        """
         Init station data handler.
         df_tot   : Pandas dataframe which contains data --> for example on daily basis
-        key      : Station ID 
+        key      : Station ID
         tabname  : This is the table name from dow_handler which is now modified --> use dow_handler.tabname to get it
-        var_sum  : Is it a variable which needs monthly sum (for example precipitation) 
+        var_sum  : Is it a variable which needs monthly sum (for example precipitation)
         var_perc : Is it a variable which deviation should be calculated in percent (for example precipitation)
         var_max  : Only calculate the maximum in resampled space
         base_dir : Should be the same directory like sqlite data is stored to use one database
@@ -55,6 +59,10 @@ class station_data_handler(dict):
         self.var_max   = var_max
         self.base_dir  = base_dir
         self.key       = key
+
+        self.resolution = resolution
+        self.par        = par
+
         if(year_spec is None):
             self.year_spec = year_spec
         else:
@@ -82,7 +90,7 @@ class station_data_handler(dict):
             return
         else:
             self.lcalc = True
-    
+
     def __getattr__(self, item):
         return self[item]
 
@@ -108,12 +116,12 @@ class station_data_handler(dict):
     def calc_yearly_vals(self):
         """Calculates yearly values --> resamples df_tot"""
         self.df_yearly = self.resample_df(self.df_tot,'Y')
-    
+
     def resample_df(self,df_in,type_resample):
         """Resample DataFrame
         df_in:         pandas DataFrame with datetime as index
         type_resample: string --> Type of resampmling (D daily, M monthly, Y yearly, and so on)
-        
+
         Resampling also takes into account self.var_sum. If True the sum will be resampled otherwise mean
         """
 
@@ -146,7 +154,7 @@ class station_data_handler(dict):
 
         df_clim = self.extract_subdata_year(self.df_monthly,years,yeare)
         sdf_name = f'df_monthly_c_{years}'
-        self[sdf_name] = df_clim.groupby(df_clim.index.month).mean()
+        self[sdf_name] = df_clim.groupby(df_clim.index.month).mean(numeric_only=True)
 
         df_clim = self.extract_subdata_year(self.df_yearly,years,yeare)
         sdf_name = f'df_yearly_c_{years}'
@@ -181,12 +189,25 @@ class station_data_handler(dict):
         if(self.lcalc):
             # monthly
             self['df_monthly_clim_stats'] = self.calc_monthly_clim_stats(self.df_monthly,percentiles=percentiles)
-         
+
+    def calc_daily_indicators(self,df_in, col_max_temp, col_min_temp, col_precip):
+        """
+            Calculates days within month which are over a certain threshold
+            ice days, frost days, summer day, hot day, rainy day
+
+        Arguments:
+            df_in: DataFrame with the data (index must be date on daily basis)
+        """
+
+        # daily sum up
+
+        self['df_daily_clim_stats'] = None
+
 
     def calc_daily_clim_stats(self,df_in,percentiles=None):
         """This routine calculates climatolocal percentiles and maximum each day of the year
            It discard Feb 29. So the return is 365 days. It does a loop over the days
-           because groupby takes leap years into accoutn and therefore leads to 366 days
+           because groupby takes leap years into account and therefore leads to 366 days
            This approach may take more time than for example regroup
         Arguments:
         -------------------
@@ -201,16 +222,18 @@ class station_data_handler(dict):
             df_minmax['DOY'] = np.full(2,i)
             try:
                 #df_out = df_out.append(df_minmax,ignore_index=True)
-                df_out = df_out.append(df_minmax)
+                #df_out = df_out.append(df_minmax)
+                df_out = pd.concat([df_out,df_minmax])
             except: # create the DataFrame
                 df_out = df_minmax.copy()
 
             # as DataFrame should be created already just append percentiles
             if(percentiles is not None):
-                df_percentiles = df_in[cond].quantile(percentiles)
+                df_percentiles = df_in[cond].quantile(percentiles,numeric_only=True)
                 df_percentiles['DOY'] = np.full(len(percentiles),i)
                 #df_out = df_out.append(df_percentiles,ignore_index=True)
-                df_out = df_out.append(df_percentiles)
+                #df_out = df_out.append(df_percentiles)
+                df_out = pd.concat([df_out,df_percentiles])
             i += 1
 
         df_out.reset_index(inplace=True)
@@ -227,12 +250,14 @@ class station_data_handler(dict):
         """
 
         i = 1
+        self.df_test = df_in
         for month in df_in.index.month.unique():
             cond = (df_in.index.month == month)
             df_minmax = df_in[cond].agg(['max','min'])
             df_minmax['Monat'] = np.full(2,i)
             try:
-                df_out = df_out.append(df_minmax)
+                #df_out = df_out.append(df_minmax)
+                df_out = pd.concat([df_out,df_minmax])
             except:
                 df_out = df_minmax.copy()
             
@@ -240,7 +265,8 @@ class station_data_handler(dict):
             if(percentiles is not None):
                 df_percentiles = df_in[cond].quantile(percentiles)
                 df_percentiles['Monat'] = np.full(len(percentiles),i)
-                df_out = df_out.append(df_percentiles)
+                #df_out = df_out.append(df_percentiles)
+                df_out = pd.concat([df_out,df_percentiles])
             i += 1 
 
         df_out.reset_index(inplace=True)
@@ -257,12 +283,16 @@ class station_data_handler(dict):
             df_in:  DataFrame with data (for example subdata with 30 years of data)
         """
 
+        lfirst = True
         for date in self.nonleap_range:
             cond = (df_in.index.month == date.month) & (df_in.index.day == date.day)
-            try:
-                df_out = df_out.append(df_in[cond].mean().to_frame().T,ignore_index=True)
-            except: # create the DataFrame
+            if(lfirst):
                 df_out = df_in[cond].mean().to_frame().T
+                lfirst = False
+                self.df_out = df_out
+            else:
+                df_tmp = df_in[cond].mean().to_frame().T
+                df_out = pd.concat([df_out,df_tmp],ignore_index=True)
 
         df_out.index      = self.nonleap_range.dayofyear
         df_out.index.name = 'DOY'
@@ -450,28 +480,28 @@ class station_data_handler(dict):
                 print("Write daily clim vals")
             sdf_name = f'df_daily_c_{years}'
             tabname  = f'{self.tabname_c}_daily_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
 
             #write monthly vals
             if(self.ldebug):
                 print("Write monthly clim vals")
             sdf_name = f'df_monthly_c_{years}'
             tabname  = f'{self.tabname_c}_monthly_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
 
             #write yearly vals
             if(self.ldebug):
                 print("Write yearly clim vals")
             sdf_name = f'df_yearly_c_{years}'
             tabname  = f'{self.tabname_c}_yearly_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
 
         try:
             if(self.ldebug):
                 print("Write daily clim stats")
             sdf_name = 'df_daily_clim_stats'
             tabname  = f'{self.tabname_c}_daily_climstats'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats')
         except:
             write_exc_info()
         try:
@@ -479,13 +509,13 @@ class station_data_handler(dict):
                 print("Write monthly clim stats")
             sdf_name = 'df_monthly_clim_stats'
             tabname  = f'{self.tabname_c}_monthly_climstats'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname)
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats')
         except:
             write_exc_info()
 
 
     def write_clim_to_sqlite(self,df_in,key,
-                             tablename):
+                             tablename,ctype=None):
         """Write sqlite data to 
         df_in: prepared DataFrame --> prepare_to_sqlite should be performed before
         key: Station ID
@@ -495,7 +525,19 @@ class station_data_handler(dict):
         # construct filename
         filename = self.base_dir+STATION_FOLDER+SQLITEFILESTAT
 
-        write_sqlite(df_in,key,tablename,filename,debug=self.ldebug)
+        con = open_database(filename)
+
+        if(check_for_table(con,tablename)):
+            lcreate=False
+        else:
+            lcreate=True
+
+        if(lcreate):
+            create_table_res_climstats(con,self.resolution,self.par,tablename,ctype=ctype)
+
+        write_sqlite_data(df_in, con, tablename,debug=self.ldebug)
+
+        con.close()
     
     def combine_df_clim_class(self,station_data_class,clim_norms=None):
         """This combines climate normal Dataframes from another instance
