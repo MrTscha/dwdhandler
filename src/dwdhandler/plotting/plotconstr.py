@@ -1896,7 +1896,7 @@ class plotly_class:
                 ),
                 rangeslider=dict(
                     visible=False
-                ),
+            ),
                 type='date'
             )
         )
@@ -1916,6 +1916,7 @@ class plotly_class:
                          date_index=None,
                          year_in=None,
                          title=None,
+                         returnJson=False,
                          filename=None
                         ):
         """Plots timeseries of actual year
@@ -2027,6 +2028,9 @@ class plotly_class:
             title=title,
             yaxis_title=self.plot_unit_dict[var_plot]
         )
+
+        if(returnJson):
+            return json.dumps(fig,cls=PlotlyJSONEncoder)
 
         # create filename if none is given
         if(filename is None):

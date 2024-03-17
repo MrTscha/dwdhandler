@@ -56,8 +56,8 @@ def read_station_list(dir_in,file_in,debug=False):
             height      = np.float(height)                                                                        
             lat         = float(line[43:50])                                                                      
             lon         = float(line[53:60])                                                                      
-            name        = line[61:101].rstrip()                                                                   
-            state       = line[102:126].rstrip()                                                                  
+            name        = line[61:141].rstrip()                                                                   
+            state       = line[142:180].rstrip()                                                                  
             station_list[station_key] = {'von':b_date,'bis':e_date,                                               
                                      'hoehe':height,'lat':lat,'lon':lon,                                          
                                      'name':name,'bundesland':state}                                              
@@ -459,11 +459,13 @@ def create_statement(resolution=None,par=None,lclimstat=False,keys=None,ctype=No
         for var in STATION_VAR_DICT[resolution][par]:
             loverwrite_not_null = False
 
-            print(var, lclimstat)
-            luse_int_var = not (var in [DATENAMESTAT, DATENAMESTATEND] or not lclimstat)
-            loverwrite_not_null = True
+            #print(var, lclimstat)
+            if(lclimstat):
+                luse_int_var = not (var in [DATENAMESTAT, DATENAMESTATEND])
+            else:
+                luse_int_var = True
 
-            print(luse_int_var, loverwrite_not_null)
+            loverwrite_not_null = True
 
             if(var in STATION_INT_VARS):
                 # avoid that MESS_DATUM is used in case of climstats
