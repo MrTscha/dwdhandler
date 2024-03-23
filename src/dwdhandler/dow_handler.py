@@ -9,14 +9,11 @@ Created on Thu Jun 08 17:45:40 2020
 """
 
 #import system modules
-from functools import partial
 from sys import exit, float_repr_style, stdout, exc_info
 import os
-from numpy.lib.arraysetops import isin
 import pandas as pd
 import datetime
 import shutil
-import sqlite3
 import numpy as np
 
 try:
@@ -57,9 +54,14 @@ class dow_handler(dict):
         """
         This class handles the download of data originating from opendata.dwd.de
         dtype: specify type of data --> station:Station Data, raster: Raster Data, nwp: Numerical Forecast
+        par: Parameter to choose: kl, air_temperature, precipitation
         period: Define period --> historical, recent, now
+        resolution: Define temporal resolution of data: hourly, daily, monthly, yearly
+        base_dir: location of SQLite Database. Default is current directory
+        nwpgrid: Grid of numerical forecast, default 'regular-lat-lon'
         local_time: translate to local time if wanted, otherwise time is in UTC
         date_check: check list of station data has to be data to this given date, if not specified today is used
+        debug: True or False. Some more output
         
         dtype raster has to be set with period recent (which is default value)! 
         dtype regavg has to be set with period recent (which is default value)!
