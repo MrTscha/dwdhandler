@@ -1,6 +1,47 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=61.0",
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "dwdhandler"
+dynamic = ["version"]
+requires-python = ">=3.6"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "pysqlite3",
+    "seaborn",
+    "matplotlib",
+    "folium",
+    "plotly",
+    "scipy"
+]
+
+readme = "README.md"
+
+authors = [
+  {name = "Tobias Schad", email = "tobias.schad@googlemail.com"}
+]
+maintainers = [
+    {name = "Tobias Schad", email = "tobias.schad@googlemail.com"}
+]
+
+description = "Package to handle data from German Weather Service and some simple plotting routines"
+
+license = { file = "LICENSE" }
+
+keywords = ["dwd", "German Weather Service", "Deutscher Wetterdienst"]
+
+[project.urls]
+Repository = "https://github.com/MrTscha/dwdhandler"
+Issues = "https://github.com/MrTscha/dwdhandler/issues"
+
+[project.optional-dependencies]
+rasterproc = ["pyproj"]
+
+[tool.setuptools.dynamic]
+version = {attr = "package.__version__"}
