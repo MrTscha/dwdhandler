@@ -13,6 +13,8 @@ DATENAMESTAT = 'MESS_DATUM' # Name of time variable of station data
 DATENAMESTATEND = 'MESS_DATUM_ENDE'
 STATIONNAMEQUAL = 'QN'
 
+RADIUSEARTH = 6371000
+
 RASTERFACTDICT = {
     'air_temperature_max':0.1,
     'air_temperature_mean':0.1,
