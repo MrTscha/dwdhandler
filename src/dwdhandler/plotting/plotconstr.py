@@ -1230,7 +1230,11 @@ class plot_handler(dict):
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        year_diff = 2
+        xstart = datetime(date_arr[0].year-year_diff,date_arr[0].month, date_arr[0].day)
+        xend   = datetime(date_arr[-1].year+year_diff,date_arr[-1].month, date_arr[-1].day)
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
         ax.set_ylabel('[$^\circ C$]',fontsize=fsyl_size)
         ax = axs[0,1]
         var_t = 'air_temperature_mean'
@@ -1239,7 +1243,8 @@ class plot_handler(dict):
         norm_size = [self.vminmax_dict_regavgyear[var_t][ptypet]['vmin'],self.vminmax_dict_regavgyear[var_t][ptypet]['vmax']]
         normalize = self.make_stripe_plot(date_arr,temp_dev,ax,cmap,norm_size,lretnorm=True)
         ax.set_xticks([])
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
 
         cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
         cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
@@ -1256,7 +1261,8 @@ class plot_handler(dict):
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
         ax.set_xticks([])
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
         ax.set_ylabel('[mm]',fontsize=fsyl_size)
         ax = axs[1,1]
         var_t = 'precipitation'
@@ -1267,7 +1273,8 @@ class plot_handler(dict):
         prec_perc = (1.0 + (prec_dev/prec))*100.0
         normalize = self.make_stripe_plot(date_arr,prec_perc,ax,cmap,norm_size,lretnorm=True)
         ax.set_xticks([])
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
 
         cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
         cbar   = mpl.colorbar.ColorbarBase(cax,cmap=cmap,norm=normalize,extend='both')
@@ -1286,7 +1293,8 @@ class plot_handler(dict):
         ax.plot_date(date_arr,tmp_arr,'-',color='orange',label=f'Gleitendes Mittel ({move_avg}j)')
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels,loc='upper left',fontsize=fs_legend)
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
         ax.tick_params(axis='x', labelrotation=45)
         ax.set_ylabel('[h]',fontsize=fsyl_size)
 
@@ -1302,7 +1310,8 @@ class plot_handler(dict):
         # to avoid error message replace mask with nan
         sd_perc = sd_perc.filled(np.nan)
         normalize = self.make_stripe_plot(date_arr,sd_perc,ax,cmap,norm_size,lretnorm=True)
-        ax.set_xlim(date_arr[0],date_arr[-1])
+        #ax.set_xlim(date_arr[0],date_arr[-1])
+        ax.set_xlim(xstart, xend)
         ax.tick_params(axis='x', labelrotation=45)
 
         cax, _ = mpl.colorbar.make_axes(ax,shrink=0.65,fraction=0.03,pad=0.04,anchor=(2.0,0.5))
@@ -1916,7 +1925,7 @@ class plotly_class:
                          date_index=None,
                          year_in=None,
                          title=None,
-                         returnJson=False,
+                         returnJson=True,
                          filename=None
                         ):
         """Plots timeseries of actual year
