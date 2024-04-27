@@ -31,37 +31,37 @@ def read_station_list(dir_in,file_in,debug=False):
     """ Reads DWD station list metadata """
 
     if(debug):
-        print("Open file {} and read station list".format(dir_in+file_in))                                
+        print("Open file {} and read station list".format(dir_in+file_in))
 
-    check_file_encoding(dir_in,file_in)                                                        
+    check_file_encoding(dir_in,file_in)
 
-    input_file = open(dir_in+file_in,"r")                                                           
+    input_file = open(dir_in+file_in,"r")
 
-    lines = input_file.readlines()                                                                                
+    lines = input_file.readlines()
 
     i = 0
 
     station_list = {}
 
-    for line in lines:                                                                                            
+    for line in lines:
         if(i == 0):
-            header = line.split()                                                                                 
-        elif(i > 1): # skip second line...                                                                        
+            header = line.split()
+        elif(i > 1): # skip second line...
             station_key = line[0:5]
-            year, month, day = extract_yyyymmdd(line[6:14])                                                       
-            b_date      = datetime.datetime(int(year), int(month), int(day))                                      
-            year, month, day = extract_yyyymmdd(line[15:23])
-            e_date      = datetime.datetime(int(year), int(month), int(day))                                      
-            height      = line[34:38].replace(" ","")
-            height      = np.float(height)                                                                        
-            lat         = float(line[43:50])                                                                      
-            lon         = float(line[53:60])                                                                      
-            name        = line[61:141].rstrip()                                                                   
-            state       = line[142:180].rstrip()                                                                  
-            station_list[station_key] = {'von':b_date,'bis':e_date,                                               
-                                     'hoehe':height,'lat':lat,'lon':lon,                                          
-                                     'name':name,'bundesland':state}                                              
-        i += 1                                                                                                    
+            year, month, day = extract_yyyymmdd(line[21:30])
+            b_date      = datetime.datetime(int(year), int(month), int(day))
+            year, month, day = extract_yyyymmdd(line[30:38])
+            e_date      = datetime.datetime(int(year), int(month), int(day))
+            height      = line[49:53].replace(" ","")
+            height      = np.float(height)
+            lat         = float(line[58:65])
+            lon         = float(line[68:75])
+            name        = line[76:156].rstrip()
+            state       = line[157:204].rstrip()
+            station_list[station_key] = {'von':b_date,'bis':e_date,
+                                     'hoehe':height,'lat':lat,'lon':lon,
+                                     'name':name,'bundesland':state}
+        i += 1
 
     if(debug):
         print("{} stations read".format(i-2))                                                                     
