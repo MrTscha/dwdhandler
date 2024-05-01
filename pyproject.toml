@@ -44,4 +44,4 @@ Issues = "https://github.com/MrTscha/dwdhandler/issues"
 rasterproc = ["pyproj"]
 
 [tool.setuptools.dynamic]
-version = {attr = "package.__version__"}
+version = {attr = "dwdhandler.__version__"}

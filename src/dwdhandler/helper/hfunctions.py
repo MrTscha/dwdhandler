@@ -35,39 +35,18 @@ def read_station_list(dir_in,file_in,debug=False):
 
     check_file_encoding(dir_in,file_in)
 
-    input_file = open(dir_in+file_in,"r")
-
-    lines = input_file.readlines()
-
-    i = 0
-
-    station_list = {}
-
-    for line in lines:
-        if(i == 0):
-            header = line.split()
-        elif(i > 1): # skip second line...
-            station_key = line[0:5]
-            year, month, day = extract_yyyymmdd(line[21:30])
-            b_date      = datetime.datetime(int(year), int(month), int(day))
-            year, month, day = extract_yyyymmdd(line[30:38])
-            e_date      = datetime.datetime(int(year), int(month), int(day))
-            height      = line[49:53].replace(" ","")
-            height      = np.float(height)
-            lat         = float(line[58:65])
-            lon         = float(line[68:75])
-            name        = line[76:156].rstrip()
-            state       = line[157:204].rstrip()
-            station_list[station_key] = {'von':b_date,'bis':e_date,
-                                     'hoehe':height,'lat':lat,'lon':lon,
-                                     'name':name,'bundesland':state}
-        i += 1
+    # First Line and Line with ------ ----- are skipped
+    df_out = pd.read_fwf(dir_in+file_in,skiprows=[0,1],
+                          names=['Stations_id', 'von', 'bis', 'hoehe','lat','lon','name','bundesland']) 
+    df_out['Stations_id'] = df_out['Stations_id'].apply(lambda x: '{0:0>5}'.format(x))
+    df_out['von'] = pd.to_datetime(df_out['von'],format="%Y%m%d")
+    df_out['bis'] = pd.to_datetime(df_out['bis'],format="%Y%m%d")
+    df_out.set_index('Stations_id', inplace=True)
 
     if(debug):
-        print("{} stations read".format(i-2))                                                                     
-        #print(station_list)                                                                                      
+        print("{} stations read".format(df_out.shape[0]))
 
-    return pd.DataFrame(station_list).T 
+    return df_out
 
 def extract_yyyymmdd(date,sep=''):                                                                                                                                                                                                           
     """ extracts hour day month year from string of yyyymmddhh or with seperator                                      
