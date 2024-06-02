@@ -1789,6 +1789,7 @@ class plotly_class:
                         year_in=None,
                         title=None,
                         filename=None,
+                        returnJson=False,
                         **kwargs
                         ):
         """Plots timeseries of actual year
@@ -1854,6 +1855,13 @@ class plotly_class:
 
         if(df_clim_daily is not None or not df_climstats.empty()):
             # add clim_cumsum
+            if(date_range.is_leap_year[0]):
+                row_number = 60
+                df1 = df_clim_daily[0:row_number]
+                df2 = df_clim_daily[row_number:]
+                df1.loc[row_number] = df_clim_daily.loc[row_number]
+                df_clim_daily = pd.concat([df1,df2])
+                df_clim_daily.index = [*range(df_clim_daily.shape[0])]
             fig.add_trace(go.Scatter(
                 x=date_range,
                 y=df_clim_daily[var_plot].groupby(date_range.month).cumsum().values,
@@ -1911,6 +1919,9 @@ class plotly_class:
                 type='date'
             )
         )
+
+        if(returnJson):
+            return json.dumps(fig,cls=PlotlyJSONEncoder)
 
         # create filename if none is given
         if(filename is None):
