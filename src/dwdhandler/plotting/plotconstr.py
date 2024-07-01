@@ -133,15 +133,15 @@ class plot_handler(dict):
         # create dictionaries for plotting routines
         # unit
         self.unit_dict = {
-            'air_temperature_max':'$\degree$C',
-            'air_temperature_mean':'$\degree$C',
-            'air_temperature':'$\degree$C',
-            'dew_point':'$\degree$C',
-            'air_temperature_min':'$\degree$C',
+            'air_temperature_max':r'$\degree$C',
+            'air_temperature_mean':r'$\degree$C',
+            'air_temperature':r'$\degree$C',
+            'dew_point':r'$\degree$C',
+            'air_temperature_min':r'$\degree$C',
             'pressure':'hPa',
             'humidity':'%',
             'windvel':'km/h',
-            'winddir':'$\circ$',
+            'winddir':r'$\circ$',
             'cloud_type':' ',
             'cloud_amount':' ',
             'radiation':'Jcm$^2$',
@@ -403,18 +403,18 @@ class plot_handler(dict):
         # title
         self.var_title_dict = {
             'air_temperature_max' :{'long' :'Maximale Temperatur [{}]'.format(self.unit_dict['air_temperature_max']),
-                                    'abs'  :'$\overline{T_{max}}$',
-                                    'clim' :'$\overline{T_{max}}$',
+                                    'abs'  :r'$\overline{T_{max}}$',
+                                    'clim' :r'$\overline{T_{max}}$',
                                     'dev'  :'$T_{max}$',
                                     'short':'Maximaltemperatur'},
             'air_temperature_mean':{'long' :'Mittlere Temperatur [{}]'.format(self.unit_dict['air_temperature_mean']),
-                                    'abs'  :'$\overline{T_{mean}}$',
-                                    'clim' :'$\overline{T_{max}}$',
+                                    'abs'  :r'$\overline{T_{mean}}$',
+                                    'clim' :r'$\overline{T_{max}}$',
                                     'dev'  :'$T_{mean}$',
                                     'short':'Mitteltemperatur'},
             'air_temperature_min' :{'long' :'Minimale Temperatur [{}]'.format(self.unit_dict['air_temperature_min']),
-                                    'abs'  :'$\overline{T_{min}}$',
-                                    'clim' :'$\overline{T_{max}}$',
+                                    'abs'  :r'$\overline{T_{min}}$',
+                                    'clim' :r'$\overline{T_{max}}$',
                                     'dev'  :'$T_{min}$',
                                     'short':'Minimaltemperatur'},
             'precipitation'       :{'long' :'Niederschlagssumme [{}]'.format(self.unit_dict['precipitation']),
@@ -1237,7 +1237,7 @@ class plot_handler(dict):
         xend   = datetime(date_arr[-1].year+year_diff,date_arr[-1].month, date_arr[-1].day)
         #ax.set_xlim(date_arr[0],date_arr[-1])
         ax.set_xlim(xstart, xend)
-        ax.set_ylabel('[$^\circ C$]',fontsize=fsyl_size)
+        ax.set_ylabel(r'[$^\circ C$]',fontsize=fsyl_size)
         ax = axs[0,1]
         var_t = 'air_temperature_mean'
         ptypet = 'dev'

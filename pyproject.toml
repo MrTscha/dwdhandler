@@ -8,17 +8,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dwdhandler"
 dynamic = ["version"]
-requires-python = ">=3.6"
+requires-python = ">=3.10"
 
 dependencies = [
     "numpy",
     "pandas",
-    "pysqlite3",
     "seaborn",
     "matplotlib",
     "folium",
     "plotly",
-    "scipy"
+    "scipy",
+    "psycopg2",
+    "python-dotenv"
 ]
 
 readme = "README.md"
