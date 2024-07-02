@@ -48,3 +48,7 @@ STATION_DATE_END_VARS = []
 
 
 REGAVG_PRIMARY_KEYS = ['Jahr','season','Monat']
+
+
+# Regarding drivers
+ALLOWED_DRIVERS = ['SQLite', 'PostgreSQL']

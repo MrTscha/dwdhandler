@@ -11,9 +11,13 @@ Created on Mon Jul 01 16:01:28 2024
 from dotenv import dotenv_values
 from pathlib import Path
 from configparser import ConfigParser
+import psycopg2
+from sqlalchemy import create_engine
+
+necessary_config_keys = ['host', 'database', 'user', 'password', 'port']
 
 class PostgresHandler():
-    def __init__(self, config=None, file_location=".env"):
+    def __init__(self, dbschema, config=None, file_location=".env"):
         """
             Class which handles postgres connection
             config (Dict): Contains essential authorization credentials
@@ -29,6 +33,8 @@ class PostgresHandler():
                         password=
         """
 
+        self.dbschema = dbschema
+
         if(config is None):
             if(Path(file_location).suffix == ".ini" ):
                 self.config = load_config(filename=file_location)
@@ -36,6 +42,64 @@ class PostgresHandler():
                 self.config = dotenv_values(file_location)
         else:
             self.config = config
+
+    def connect(self):
+        """
+            Connect to the PostgreSQL database
+        """
+
+        if(self.config is None):
+            print("No Configuration loaded, return without connecting")
+            return
+        
+        # check for keys
+        if(not check_config_completeness(self.config)):
+            return
+
+        try:
+            # connecting to PostgreSQL Server
+
+            #with psycopg2.connect(**self.config) as con:
+            #    print(f"Connection to {self.config['host']} established.")
+            #    self.con = con
+
+            connect_str = f"postgresql+psycopg2://{self.config['user']}:{self.config['password']}@{self.config['host']}:{self.config['port']}/{self.config['database']}"
+            self.engine = create_engine(
+                connect_str,
+                connect_args={'options': '-csearch_path={}'.format(self.dbschema)}
+            )
+
+        #except (psycopg2.DatabaseError, Exception) as error:
+        except ( Exception) as error:
+            print(error)
+
+    def close(self):
+        """
+            closes connection
+        """
+
+        try:
+            self.engine.dispose()
+        except Exception as error:
+            print(error)
+            print("Was connection established?")
+            
+
+def check_config_completeness(config):
+    """
+        checks config file
+    """
+
+    print(config)
+    lall = all(key in config for key in necessary_config_keys)
+
+    if(lall):
+        return lall
+    else:
+        print(set(necessary_config_keys).difference(set(config)))
+        print("are not in configuration file")
+        return False
+
 
 def load_config(filename='database.ini', section='postgresql'):
     """
@@ -46,15 +110,19 @@ def load_config(filename='database.ini', section='postgresql'):
 
     # Init parser
     parser = ConfigParser()
-    parser.read_file(filename)
-
-    # Get section entries
-    config = {}
+    parser.optionxform=str
 
     if(not Path(filename).exists):
         raise Exception(f"File {filename} does not exists!")
         return config
 
+    # Read file
+    parser.read(filename)
+
+    # Get section entries
+    config = {}
+
+    # Parse section
     if(parser.has_section(section)):
         params = parser.items(section)
         for param in params:

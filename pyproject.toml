@@ -19,6 +19,7 @@ dependencies = [
     "plotly",
     "scipy",
     "psycopg2",
+    "sqlalchemy",
     "python-dotenv"
 ]
 

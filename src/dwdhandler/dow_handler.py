@@ -34,9 +34,9 @@ from .constants.filedata import *
 from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
 from .helper.hfunctions import (check_create_dir, delete_sqlite_where, 
                                 list_files, read_station_list, unzip_file, update_progress, 
-                                write_sqlite, delete_sqlite_where, open_database,
+                                write_sqlite, delete_sqlite_where, open_database, close_database,
                                 check_for_table, create_table_res, create_table_regavg,
-                                write_sqlite_data)
+                                write_sqlite_data, check_drivers)
 from .helper.ftp import cftp
 
 class dow_handler(dict):
@@ -49,6 +49,8 @@ class dow_handler(dict):
                  nwpgrid='regular-lat-lon',
                  local_time = False,
                  date_check = None,
+                 driver = 'SQLite',
+                 dbconfigfile='.env',
                  debug = False
                 ):
         """
@@ -80,6 +82,8 @@ class dow_handler(dict):
         self.dtype  = dtype
         self.par    = par
         self.period = period
+        self.driver = driver
+        self.dbconfigfile = dbconfigfile
         self.debug  = debug
         self.local_time = local_time
         self.date_check = date_check
@@ -91,6 +95,8 @@ class dow_handler(dict):
         self.tmp_dir    = 'tmp{}/'.format(datetime.datetime.now().strftime('%s'))
         # create table name for sqlite database
         self.tabname = f"{self.par}_{self.resolution}"
+
+        self.ldbsave = check_drivers(driver)
 
         icheck = self.prepare_download()
 
@@ -434,7 +440,7 @@ class dow_handler(dict):
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
 
-        con = open_database(filenamesql)
+        con = open_database(filenamesql, self.ldbsave, self.driver)
 
         if(check_for_table(con,self.tabname)):
             print(f"Table {self.tabname} exists")
@@ -467,7 +473,7 @@ class dow_handler(dict):
         # close ftp connection
         metaftp.close_ftp()
 
-        con.close()
+        close_database(con, self.driver)
 
         os.chdir(self.home_dir)
 
@@ -584,7 +590,7 @@ class dow_handler(dict):
         """
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
-        con = open_database(filenamesql)
+        con = open_database(filenamesql, self.ldbsave, self.driver)
 
         if(self.resolution == 'annual'):
 
@@ -663,7 +669,7 @@ class dow_handler(dict):
         except:
             pass
 
-        con.close()
+        close_database(con, self.driver)
 
         return df_out
 
@@ -913,7 +919,7 @@ class dow_handler(dict):
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filenamesql)
+        con = open_database(filenamesql, self.ldbsave, self.driver, self.debug)
 
         if(check_for_table(con,self.tabname)):
             print(f"Table {self.tabname} exists")
@@ -923,7 +929,7 @@ class dow_handler(dict):
             lcreate=True
 
         if(lcreate):
-            create_table_res(con,self.resolution, self.par)
+            create_table_res(con,self.resolution, self.par,self.driver)
 
         for key in key_arr:
             update_progress(ii/i_tot)
@@ -940,7 +946,7 @@ class dow_handler(dict):
                 df_tmp = self.get_station_df_csv(os.getcwd())
                 # prepare date to split into year month day ...
                 self.df_tmp = df_tmp
-                write_sqlite_data(df_tmp, con, self.tabname)
+                write_sqlite_data(df_tmp, con, self.tabname, self.driver)
             except Exception as Excp:
                 print(Excp)
                 print(f"{self.pathremote+filename} not found\n")
@@ -950,6 +956,8 @@ class dow_handler(dict):
         self.stations_not_found = not_in_list
 
         metaftp.close_ftp()
+
+        close_database(con, self.driver)
 
         os.chdir(self.home_dir)
 
@@ -964,19 +972,19 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename,debug=self.debug)
+        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug)
 
         tabname = f"{self.par}_{self.resolution}"
 
         sqlexec = "SELECT * from {} WHERE STATIONS_ID = {}".format(tabname,key)
 
         if(self.debug):
-            print("Get SQLITE data:")
+            print("Get data:")
             print(sqlexec)
 
         df_data = pd.read_sql_query(sqlexec, con)
 
-        con.close()
+        close_database(con, self.driver)
 
         if(self.resolution == 'hourly'):
             strformat='%Y%m%d%H'
@@ -1016,11 +1024,11 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename,debug=self.debug)
+        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug)
 
         df_data = pd.read_sql_query(sqlexec, con)
 
-        con.close()
+        close_database(con, self.driver)
 
         if(ldateindex):
             if(self.resolution == 'hourly'):
@@ -1058,7 +1066,7 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename,debug=self.debug)
+        con = open_database(filename, ldbsave=self.ldbsave, driver=self.driver,debug=self.debug)
 
         tabname = f"{self.par}_{self.resolution}"
 
@@ -1076,7 +1084,7 @@ class dow_handler(dict):
         con.execute(sqlexc)
         con.commit()
 
-        con.close()
+        close_database(con, self.driver)
 
     def get_station_df_csv(self,dir_in):
         """

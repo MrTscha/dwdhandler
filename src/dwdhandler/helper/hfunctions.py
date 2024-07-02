@@ -15,11 +15,15 @@ import numpy as np
 import datetime
 import zipfile
 import sqlite3
+import sqlalchemy as sa
+from dotenv import dotenv_values
+from ..helper.postgres import PostgresHandler
 from ..constants.constpar import (STATION_VAR_DICT, STATION_INT_VARS, 
                                   STATION_TEXT_VARS, STATION_PRIMARY_KEYS,
                                   STATION_NOT_NULL, STATION_DATE_END_VARS,
                                   REGAVG_PRIMARY_KEYS,
-                                  DATENAMESTAT,DATENAMESTATEND)
+                                  DATENAMESTAT,DATENAMESTATEND,
+                                  ALLOWED_DRIVERS)
 
 def check_create_dir(dir_in):
     """ Simple check if dir exists, if not create it """
@@ -187,22 +191,81 @@ def moving_average(x, w):
     return np.ma.convolve(x, np.ma.ones(w), 'valid') / w
 
 def open_database(filename=None,
+                  ldbsave=False,
+                  driver='SQLite',
+                  dbschema=None,
+                  postgconfig=None,
+                  postfile=".env",
                   debug=False):
     """Open Database
     Arguments:
     ------------------------------------
         filename: File Name of SQLITE Database (Default None and and if None it returns without doing anything)
+        ldbsave:  Bool if DB can be savely used, if not do nothing
+        driver:   Driver to use 
+        dbschema: Schema to use
+        postgconfig: Configuration Dictionary for postgres 
+        postfile: location of .env File or database.ini File
         debug:    Some additional output
     returns
         con:      Sqlite connection
     """
-    con = sqlite3.connect(filename,uri=True)
 
-    con.execute('''PRAGMA synchronous = EXTRA''')
-    con.execute('''PRAGMA journal_mode = WAL''')
-    con.commit()
+    if(not ldbsave):
+        if(debug):
+            print("db seems not save to use return")
+        return 
+    
+    if(driver in ['SQLite']):
+        con = sqlite3.connect(filename,uri=True)
+
+        con.execute('''PRAGMA synchronous = EXTRA''')
+        con.execute('''PRAGMA journal_mode = WAL''')
+        con.commit()
+    elif(driver in ['PostgreSQL']):
+        if(postgconfig is None):
+            print("postfile " + postfile)
+            print(dotenv_values("/home/schad/workspace/python/DWD/build/dev_dwdhandler/.env"))
+            postgres = PostgresHandler(file_location=postfile,dbschema=dbschema)
+        else:
+            postgres = PostgresHandler(config=postgconfig,dbschema=dbschema)
+
+        postgres.connect()
+    else:
+        return {}
 
     return con
+
+def close_database(con,
+                   driver='SQLite',
+                   debug=False):
+    """
+        Closes connection of database
+        con:  Connection stream
+        driver:   Driver to use 
+        debug:    Some additional output
+    """
+
+    if(debug):
+        print("Close Connection for " + driver)
+
+    if(driver in ['SQLite']):
+        con.close()
+    elif(driver in ['PostgreSQL']):
+        con.dispose()
+
+def check_drivers(driver):
+    """
+        Checks if driver is ok to use
+    """
+
+    lallowed = driver in ALLOWED_DRIVERS
+
+    if(not lallowed):
+        print(f"{driver} is not implemented at the moment. Use Following:")
+        print(ALLOWED_DRIVERS)
+
+    return lallowed
 
 def create_table_regavg(con,
                         resolution=None,
@@ -242,6 +305,7 @@ def create_table_regavg(con,
 def create_table_res(con,
                  resolution=None,
                  par=None,
+                 driver='SQLite',
                  debug=False):
     """
         Create table according to given resolution and parameter
@@ -265,7 +329,8 @@ def create_table_res(con,
     print(create_stmt)
 
     con.execute(create_stmt)
-    con.commit()
+    if(driver in ['SQLite']):
+        con.commit()
 
 def create_table_res_climstats(con,
                                resolution,
@@ -352,13 +417,14 @@ def delete_sqlite_where(tabname=None,
 
     con.close()
 
-def write_sqlite_data(data,con, table,
+def write_sqlite_data(data,con, table, driver,
                       debug=False):
     """
         Write data to sqlite
     Arguments:
         data: dataframe
         con:  Connection
+        driver: to use
         table: tablename
     """
 
@@ -573,25 +639,30 @@ def write_sqlite(df_in,key,
 
     con.close()
 
-def check_for_table(con,table):
+def check_for_table(con,table, driver):
     """
         Checks connection if table exists and returns true if so, otherweise false
     Arguments:
         con: Connection
         table: string --> tablename
+        driver: string --> driver which is used
     """
 
-    # create cursor object
-    cur = con.cursor()
+    if(driver in ['SQLite']):
+        # create cursor object
+        cur = con.cursor()
 
-    # fetch table name
-    listOfTable = cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name = '{table}'").fetchall()
+        # fetch table name
+        listOfTable = cur.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name = '{table}'").fetchall()
 
-    if(listOfTable == []):
-        # no table present
-        return False
+        if(listOfTable == []):
+            # no table present
+            return False
+        else:
+            return True
     else:
-        return True
+        inspector = sa.Inspector(con)
+        return table in inspector.get_table_names()
 
 def write_exc_info():
     exc_type, exc_obj, exc_tb = exc_info()
