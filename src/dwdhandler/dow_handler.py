@@ -51,6 +51,8 @@ class dow_handler(dict):
                  date_check = None,
                  driver = 'SQLite',
                  dbconfigfile='.env',
+                 config_dir=None,
+                 dbschema='dwd',
                  debug = False
                 ):
         """
@@ -84,11 +86,16 @@ class dow_handler(dict):
         self.period = period
         self.driver = driver
         self.dbconfigfile = dbconfigfile
+        self.dbschema = dbschema
         self.debug  = debug
         self.local_time = local_time
         self.date_check = date_check
         self.resolution = resolution
         self.base_dir   = base_dir
+        if(config_dir is None): # Assuming that configuration is stored in the same directory
+            self.config_dir = base_dir
+        else:
+            self.config_dir = config_dir
         self.nwpgrid    = nwpgrid
         # store "Home" Directory
         self.home_dir   = os.getcwd()  ### TODO: Das geht hier vlt nicht so einfach... beißt sich mit base_dir und dem wechseln in die Verzeichnisse
@@ -440,7 +447,9 @@ class dow_handler(dict):
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
 
-        con = open_database(filenamesql, self.ldbsave, self.driver)
+        con = open_database(filenamesql, self.ldbsave, self.driver, 
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
         if(check_for_table(con,self.tabname)):
             print(f"Table {self.tabname} exists")
@@ -590,7 +599,9 @@ class dow_handler(dict):
         """
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathregsql+SQLITEREGAVG)
-        con = open_database(filenamesql, self.ldbsave, self.driver)
+        con = open_database(filenamesql, self.ldbsave, self.driver, 
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
         if(self.resolution == 'annual'):
 
@@ -919,9 +930,14 @@ class dow_handler(dict):
 
         filenamesql = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filenamesql, self.ldbsave, self.driver, self.debug)
+        con = open_database(filenamesql, self.ldbsave, 
+                            self.driver, 
+                            dbschema=self.dbschema,
+                            debug=self.debug,
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
-        if(check_for_table(con,self.tabname)):
+        if(check_for_table(con,self.tabname,self.driver)):
             print(f"Table {self.tabname} exists")
             lcreate=False
         else:
@@ -929,7 +945,8 @@ class dow_handler(dict):
             lcreate=True
 
         if(lcreate):
-            create_table_res(con,self.resolution, self.par,self.driver)
+            if(not create_table_res(con,self.resolution, self.par,self.driver, schema=self.dbschema)):
+                return
 
         for key in key_arr:
             update_progress(ii/i_tot)
@@ -972,7 +989,9 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug)
+        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug,
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
         tabname = f"{self.par}_{self.resolution}"
 
@@ -1024,7 +1043,9 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug)
+        con = open_database(filename, self.ldbsave, self.driver,debug=self.debug,
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
         df_data = pd.read_sql_query(sqlexec, con)
 
@@ -1066,7 +1087,9 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        con = open_database(filename, ldbsave=self.ldbsave, driver=self.driver,debug=self.debug)
+        con = open_database(filename, ldbsave=self.ldbsave, driver=self.driver,debug=self.debug,
+                            config_dir=self.config_dir,
+                            postfile=self.dbconfigfile)
 
         tabname = f"{self.par}_{self.resolution}"
 

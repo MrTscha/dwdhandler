@@ -23,7 +23,7 @@ from ..constants.constpar import (STATION_VAR_DICT, STATION_INT_VARS,
                                   STATION_NOT_NULL, STATION_DATE_END_VARS,
                                   REGAVG_PRIMARY_KEYS,
                                   DATENAMESTAT,DATENAMESTATEND,
-                                  ALLOWED_DRIVERS)
+                                  ALLOWED_DRIVERS, POSTGRES_DRIVER, SQLITE_DRIVER)
 
 def check_create_dir(dir_in):
     """ Simple check if dir exists, if not create it """
@@ -192,9 +192,10 @@ def moving_average(x, w):
 
 def open_database(filename=None,
                   ldbsave=False,
-                  driver='SQLite',
+                  driver=SQLITE_DRIVER,
                   dbschema=None,
                   postgconfig=None,
+                  config_dir=None,
                   postfile=".env",
                   debug=False):
     """Open Database
@@ -205,6 +206,7 @@ def open_database(filename=None,
         driver:   Driver to use 
         dbschema: Schema to use
         postgconfig: Configuration Dictionary for postgres 
+        config_dir: Directory where config file is stored
         postfile: location of .env File or database.ini File
         debug:    Some additional output
     returns
@@ -216,7 +218,7 @@ def open_database(filename=None,
             print("db seems not save to use return")
         return 
     
-    if(driver in ['SQLite']):
+    if(driver in [SQLITE_DRIVER]):
         con = sqlite3.connect(filename,uri=True)
 
         con.execute('''PRAGMA synchronous = EXTRA''')
@@ -224,20 +226,25 @@ def open_database(filename=None,
         con.commit()
     elif(driver in ['PostgreSQL']):
         if(postgconfig is None):
-            print("postfile " + postfile)
-            print(dotenv_values("/home/schad/workspace/python/DWD/build/dev_dwdhandler/.env"))
-            postgres = PostgresHandler(file_location=postfile,dbschema=dbschema)
+            if(debug):
+                print("PostgreSQL. Using following configfile: ")
+                print(config_dir, postfile)
+            if(config_dir is None):
+                postgres = PostgresHandler(file_location=postfile,dbschema=dbschema)
+            else:
+                postgres = PostgresHandler(file_location=config_dir+postfile,dbschema=dbschema)
         else:
             postgres = PostgresHandler(config=postgconfig,dbschema=dbschema)
 
         postgres.connect()
+        con = postgres.engine.connect()
     else:
         return {}
 
     return con
 
 def close_database(con,
-                   driver='SQLite',
+                   driver=SQLITE_DRIVER,
                    debug=False):
     """
         Closes connection of database
@@ -249,10 +256,13 @@ def close_database(con,
     if(debug):
         print("Close Connection for " + driver)
 
-    if(driver in ['SQLite']):
+    if(driver in [SQLITE_DRIVER]):
         con.close()
     elif(driver in ['PostgreSQL']):
-        con.dispose()
+        try:
+            con.dispose()
+        except:
+            con.close()
 
 def check_drivers(driver):
     """
@@ -305,7 +315,8 @@ def create_table_regavg(con,
 def create_table_res(con,
                  resolution=None,
                  par=None,
-                 driver='SQLite',
+                 driver=SQLITE_DRIVER,
+                 schema=None,
                  debug=False):
     """
         Create table according to given resolution and parameter
@@ -325,12 +336,29 @@ def create_table_res(con,
         print("No parameter given, return")
         return
 
-    create_stmt = create_statement(resolution,par)
+    lwrite_generated = True
+
+    if(driver in [POSTGRES_DRIVER]):
+        #if(schema is None):
+        #    print("No schema selected, no creation of table return")
+        #    return False
+
+        # get version
+        result = con.execute(sa.text("select version()"))
+        for data in result:
+            pg_version_nr = data[0].split(" ")[1]
+        
+        lwrite_generated = pg_version_nr > '12'
+
+    print("create table res " + driver)
+    create_stmt = create_statement(resolution,par, driver=driver, lwrite_generated=lwrite_generated)
     print(create_stmt)
 
-    con.execute(create_stmt)
-    if(driver in ['SQLite']):
-        con.commit()
+    if(driver in [SQLITE_DRIVER]):
+        con.execute(create_stmt)
+    else:
+        con.execute(sa.text(create_stmt))
+    con.commit()
 
 def create_table_res_climstats(con,
                                resolution,
@@ -446,10 +474,22 @@ def write_sqlite_data(data,con, table, driver,
     insert_stmt_t += ");"
     insert_stmt += insert_stmt_t
 
-    cur.executemany(insert_stmt,data.values.tolist())
-    con.commit()
 
-def create_statement(resolution=None,par=None,lclimstat=False,keys=None,ctype=None,tabname=None):
+    if(driver in ['SQLite']):
+        cur.executemany(insert_stmt,data.values.tolist())
+        con.commit()
+    else:
+        con.execute(sa.text(insert_stmt), **data.values.tolist())
+        con.commit()
+        #with con.connect() as tmp_con:
+        #    tmp_con.execute(sa.text(insert_stmt), **data.values.tolist())
+            
+
+def create_statement(resolution=None,par=None,
+                     lclimstat=False,keys=None,
+                     ctype=None,tabname=None,
+                     lwrite_generated=True,
+                     driver='SQLite'):
     """
     Creates Create Statement of table
     Arguments:
@@ -471,12 +511,22 @@ def create_statement(resolution=None,par=None,lclimstat=False,keys=None,ctype=No
     if(par is None and resolution is None and tabname is None):
         print("Not even a table name (tabname) is specified, return")
         return -1
+    
+    #if(driver in [POSTGRES_DRIVER] and schema is None):
+    #    print("No schema selected")
+    #    return -1
 
     # init create statement
     stmt = 'CREATE TABLE IF NOT EXISTS ' 
     if(tabname is None):
+        #if(driver in [POSTGRES_DRIVER]):
+        #    stmt += f'{schema}.{par}_{resolution} ('
+        #else:
         stmt += f'{par}_{resolution} ('
     else:
+        #if(driver in [POSTGRES_DRIVER]):
+        #    stmt += f'{schema}.{tabname} ('
+        #else:
         stmt += f'{tabname} ('
 
     # vars which are primary key are temporary stored here and later added
@@ -552,24 +602,40 @@ def create_statement(resolution=None,par=None,lclimstat=False,keys=None,ctype=No
 
         # add GENERATED COLUMNS 
         # we also have to add the correct name of date column
-        if(not lclimstat):
+        if(not lclimstat and lwrite_generated):
             if(par in STATION_DATE_END_VARS):
                 DATE_USE_NAME = DATENAMESTATEND
             else:
                 DATE_USE_NAME = DATENAMESTAT
+
             # Year
-            stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
+            if(driver in [SQLITE_DRIVER]):
+                stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
+            else:
+                stmt += f'Jahr INT GENERATED ALWAYS AS (MESS_DATUM / 10000) STORED, '
             # Month
-            stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
+            if(driver in [SQLITE_DRIVER]):
+                stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
+            else:
+                stmt += f'Monat INT GENERATED ALWAYS AS ((MESS_DATUM / 100) % 100) STORED, '
             # Day
-            stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
+            if(driver in [SQLITE_DRIVER]):
+                stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
+            else:
+                stmt += f'Tag INT GENERATED ALWAYS AS (MESS_DATUM % 100) STORED, '
 
             if(resolution in ['hourly','10_minutes']):
                 # Hour
-                stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
+                if(driver in [SQLITE_DRIVER]):
+                    stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
+                else:
+                    stmt += f'Stunde INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 9 FOR 2)) STORED, '
             if(resolution in ['10_minutes']):
                 # Minutes
-                stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
+                if(driver in [SQLITE_DRIVER]):
+                    stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
+                else:
+                    stmt += f'Minuten INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 11 FOR 2)) STORED, '
     else:
         for key in keys:
             if(key in ['autumn','spring','winter','summer','season']):

@@ -90,7 +90,6 @@ def check_config_completeness(config):
         checks config file
     """
 
-    print(config)
     lall = all(key in config for key in necessary_config_keys)
 
     if(lall):

@@ -51,4 +51,6 @@ REGAVG_PRIMARY_KEYS = ['Jahr','season','Monat']
 
 
 # Regarding drivers
-ALLOWED_DRIVERS = ['SQLite', 'PostgreSQL']
+SQLITE_DRIVER = 'SQLite'
+POSTGRES_DRIVER = 'PostgreSQL'
+ALLOWED_DRIVERS = [SQLITE_DRIVER, POSTGRES_DRIVER]
