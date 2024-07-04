@@ -459,13 +459,21 @@ def write_sqlite_data(data,con, table, driver,
     if(debug):
         print("Write data direct")
 
-    cur = con.cursor()
-    insert_stmt = f"INSERT OR REPLACE INTO {table} ("
+    if(driver in [SQLITE_DRIVER]):
+        cur = con.cursor()
+
+        insert_stmt = f"INSERT OR REPLACE INTO {table} ("
+    else:
+        insert_stmt = f"INSERT INTO {table} ("
     
     insert_stmt_t = "VALUES ("
+
     for col in data:
         insert_stmt   += f"{col}, "
-        insert_stmt_t += "?, "
+        if(driver in [SQLITE_DRIVER]):
+            insert_stmt_t += "?, " # TODO change if all is transfered to sqlalchemy
+        else:
+            insert_stmt_t += f":{col}, "
     
     # remove trailing comma
     insert_stmt  = insert_stmt[:-2]
@@ -474,15 +482,23 @@ def write_sqlite_data(data,con, table, driver,
     insert_stmt_t += ");"
     insert_stmt += insert_stmt_t
 
+    if(driver in [POSTGRES_DRIVER]):
+        insert_stmt = insert_stmt[:-1]
+        inspector = sa.Inspector(con)
+        pk_keys = inspector.get_pk_constraint(table_name=table)['constrained_columns']
+        insert_stmt += f" ON CONFLICT {tuple(pk_keys)} ".replace('\'','')
+        insert_stmt += f" DO UPDATE SET "
+        for col in data:
+            insert_stmt += f"{col} = EXCLUDED.{col}, "
+        insert_stmt = insert_stmt[:-2]
+        insert_stmt += ";"
 
     if(driver in ['SQLite']):
         cur.executemany(insert_stmt,data.values.tolist())
         con.commit()
     else:
-        con.execute(sa.text(insert_stmt), **data.values.tolist())
+        con.execute(sa.text(insert_stmt), data.to_dict(orient='records'))
         con.commit()
-        #with con.connect() as tmp_con:
-        #    tmp_con.execute(sa.text(insert_stmt), **data.values.tolist())
             
 
 def create_statement(resolution=None,par=None,
@@ -512,10 +528,6 @@ def create_statement(resolution=None,par=None,
         print("Not even a table name (tabname) is specified, return")
         return -1
     
-    #if(driver in [POSTGRES_DRIVER] and schema is None):
-    #    print("No schema selected")
-    #    return -1
-
     # init create statement
     stmt = 'CREATE TABLE IF NOT EXISTS ' 
     if(tabname is None):
