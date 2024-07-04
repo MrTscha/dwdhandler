@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from dotenv import dotenv_values
 from ..helper.postgres import PostgresHandler
 from ..constants.constpar import (STATION_VAR_DICT, STATION_INT_VARS, 
+                                  STATION_BIGINT_VARS,
                                   STATION_TEXT_VARS, STATION_PRIMARY_KEYS,
                                   STATION_NOT_NULL, STATION_DATE_END_VARS,
                                   REGAVG_PRIMARY_KEYS,
@@ -330,35 +331,31 @@ def create_table_res(con,
 
     if(resolution is None):
         print("No resolution given, return")
-        return
+        return False
 
     if(par is None):
         print("No parameter given, return")
-        return
+        return False
 
     lwrite_generated = True
 
     if(driver in [POSTGRES_DRIVER]):
-        #if(schema is None):
-        #    print("No schema selected, no creation of table return")
-        #    return False
-
         # get version
         result = con.execute(sa.text("select version()"))
         for data in result:
             pg_version_nr = data[0].split(" ")[1]
-        
+
+        # below version 12 generated columns are not possible, don't write them 
         lwrite_generated = pg_version_nr > '12'
 
-    print("create table res " + driver)
     create_stmt = create_statement(resolution,par, driver=driver, lwrite_generated=lwrite_generated)
-    print(create_stmt)
 
     if(driver in [SQLITE_DRIVER]):
         con.execute(create_stmt)
     else:
         con.execute(sa.text(create_stmt))
     con.commit()
+    return True
 
 def create_table_res_climstats(con,
                                resolution,
@@ -531,14 +528,8 @@ def create_statement(resolution=None,par=None,
     # init create statement
     stmt = 'CREATE TABLE IF NOT EXISTS ' 
     if(tabname is None):
-        #if(driver in [POSTGRES_DRIVER]):
-        #    stmt += f'{schema}.{par}_{resolution} ('
-        #else:
         stmt += f'{par}_{resolution} ('
     else:
-        #if(driver in [POSTGRES_DRIVER]):
-        #    stmt += f'{schema}.{tabname} ('
-        #else:
         stmt += f'{tabname} ('
 
     # vars which are primary key are temporary stored here and later added
@@ -577,7 +568,14 @@ def create_statement(resolution=None,par=None,
             if(var in STATION_INT_VARS):
                 # avoid that MESS_DATUM is used in case of climstats
                 if(luse_int_var):
-                    stmt += f'{var} INT'
+                    if(driver in [SQLITE_DRIVER]):
+                        stmt += f'{var} INT'
+                    else:
+                        if(var in STATION_BIGINT_VARS):
+                            stmt += f'{var} BIGINT'
+                        else:
+                            stmt += f'{var} INT'
+
                 #stmt += f'{var} INT'
                 loverwrite_not_null = luse_int_var
             elif(var in STATION_TEXT_VARS):
@@ -624,30 +622,64 @@ def create_statement(resolution=None,par=None,
             if(driver in [SQLITE_DRIVER]):
                 stmt += f'Jahr INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},1,4)) STORED, '
             else:
-                stmt += f'Jahr INT GENERATED ALWAYS AS (MESS_DATUM / 10000) STORED, '
+                #stmt += f'Jahr INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 11 FOR 2)) STORED, '
+                if(resolution in ['10_minutes']):
+                    factor = 10000000000
+                elif(resolution in ['daily']):
+                    factor = 1000000
+
+                stmt += f'Jahr INT GENERATED ALWAYS AS (MESS_DATUM / {factor}) STORED, '
             # Month
             if(driver in [SQLITE_DRIVER]):
                 stmt += f'Monat INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},5,2)) STORED, '
             else:
-                stmt += f'Monat INT GENERATED ALWAYS AS ((MESS_DATUM / 100) % 100) STORED, '
+                #stmt += f'Monat INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 5 FOR 2)) STORED, '
+                if(resolution in ['10_minutes']):
+                    factor = 100000000
+                elif(resolution in ['hourly']):
+                    factor = 10000
+                elif(resolution in ['daily']):
+                    factor = 100
+                stmt += f'Monat INT GENERATED ALWAYS AS ((MESS_DATUM / {factor}) % 100) STORED, '
             # Day
             if(driver in [SQLITE_DRIVER]):
                 stmt += f'Tag INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},7,2)) STORED, '
             else:
-                stmt += f'Tag INT GENERATED ALWAYS AS (MESS_DATUM % 100) STORED, '
+                #stmt += f'Tag INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 7 FOR 2)) STORED, '
+                if(resolution in ['10_minutes']):
+                    factor = 1000000
+                elif(resolution in ['hourly']):
+                    factor = 10000
+                elif(resolution in ['daily']):
+                    factor = None
+
+                if(factor is None):
+                    stmt += f'Tag INT GENERATED ALWAYS AS (MESS_DATUM % 100) STORED, '
+                else:
+                    stmt += f'Tag INT GENERATED ALWAYS AS ((MESS_DATUM / {factor}) % 100) STORED, '
 
             if(resolution in ['hourly','10_minutes']):
                 # Hour
                 if(driver in [SQLITE_DRIVER]):
                     stmt += f'Stunde INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},9,2)) STORED, '
                 else:
-                    stmt += f'Stunde INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 9 FOR 2)) STORED, '
+                    if(resolution in ['10_minutes']):
+                        factor = 10000
+                    elif(resolution in ['hourly']):
+                        factor = None
+                    #stmt += f'Stunde INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 9 FOR 2)) STORED, '
+                    if(factor is None):
+                        stmt += f'Stunde INT GENERATED ALWAYS AS (MESS_DATUM % 100) STORED, '
+                    else:
+                        stmt += f'Stunde INT GENERATED ALWAYS AS ((MESS_DATUM / {factor}) % 100) STORED, '
             if(resolution in ['10_minutes']):
                 # Minutes
                 if(driver in [SQLITE_DRIVER]):
                     stmt += f'Minuten INT GENERATED ALWAYS AS (substr({DATE_USE_NAME},11,2)) STORED, '
                 else:
-                    stmt += f'Minuten INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 11 FOR 2)) STORED, '
+                    factor = 100
+                    stmt += f'Minuten INT GENERATED ALWAYS AS ((MESS_DATUM / {factor}) % 100) STORED, '
+                #    stmt += f'Minuten INT GENERATED ALWAYS AS (substring({DATE_USE_NAME} FROM 11 FOR 2)) STORED, '
     else:
         for key in keys:
             if(key in ['autumn','spring','winter','summer','season']):
@@ -660,9 +692,11 @@ def create_statement(resolution=None,par=None,
             stmt += ', '
             if(key in REGAVG_PRIMARY_KEYS):
                 prim_keys.append(key)
-        
-    stmt = stmt.replace('/','_')
+
+    if(par in ['regavg']): # do not in station data!
+        stmt = stmt.replace('/','_') 
     stmt = stmt.replace('-','_')
+
     # are there primary keys? if so add them
     if(len(prim_keys) > 0):
         stmt += 'PRIMARY KEY('
