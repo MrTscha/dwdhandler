@@ -16,6 +16,8 @@ import datetime
 import shutil
 import numpy as np
 
+from sqlalchemy import text
+
 try:
     import pyproj
     from pyproj import Proj
@@ -31,7 +33,7 @@ except:
 # local modules
 from .constants.serverdata import SERVERPATH_CLIMATE_GERM, SERVERNAME, SERVERPATH_NWP, SERVERPATH_RASTER_GERM, SERVERPATH_REG_GERM
 from .constants.filedata import *
-from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT
+from .constants.constpar import ASCIIRASCRS, FILLVALUE, RASTERFACTDICT, SQLITE_DRIVER, POSTGRES_DRIVER
 from .helper.hfunctions import (check_create_dir, delete_sqlite_where, 
                                 list_files, read_station_list, unzip_file, update_progress, 
                                 write_sqlite, delete_sqlite_where, open_database, close_database,
@@ -989,13 +991,23 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
+        lret_engine = self.driver in [POSTGRES_DRIVER]
+        lret_engine = False
+        print("return engine: ", lret_engine)
+
         con = open_database(filename, self.ldbsave, self.driver,debug=self.debug,
                             config_dir=self.config_dir,
-                            postfile=self.dbconfigfile)
+                            postfile=self.dbconfigfile,
+                            return_engine=lret_engine)
 
-        tabname = f"{self.par}_{self.resolution}"
+        if(self.driver in [POSTGRES_DRIVER]):
+            tabname = f"{self.dbschema}.{self.par}_{self.resolution}"
+        else:
+            tabname = f"{self.par}_{self.resolution}"
 
         sqlexec = "SELECT * from {} WHERE STATIONS_ID = {}".format(tabname,key)
+        if(self.driver in [POSTGRES_DRIVER]):
+            sqlexec = text(sqlexec)
 
         if(self.debug):
             print("Get data:")
@@ -1016,8 +1028,13 @@ class dow_handler(dict):
         elif(self.resolution == 'yearly'):
             strformat='%Y'
 
-        df_data.index = pd.to_datetime(df_data['MESS_DATUM'],format=strformat) ## TODO MESS_DATUM durch generisches filedata austauschen
-        df_data.drop(columns=['MESS_DATUM'],inplace=True)
+        if(self.driver in [POSTGRES_DRIVER]):
+            date_string = 'mess_datum'
+        else:
+            date_string = 'MESS_DATUM'
+
+        df_data.index = pd.to_datetime(df_data[date_string],format=strformat) ## TODO MESS_DATUM durch generisches filedata austauschen
+        df_data.drop(columns=[date_string],inplace=True)
 
         columns = df_data.columns
         replace_col = {}

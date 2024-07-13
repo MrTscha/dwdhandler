@@ -198,6 +198,7 @@ def open_database(filename=None,
                   postgconfig=None,
                   config_dir=None,
                   postfile=".env",
+                  return_engine=False,
                   debug=False):
     """Open Database
     Arguments:
@@ -238,6 +239,8 @@ def open_database(filename=None,
             postgres = PostgresHandler(config=postgconfig,dbschema=dbschema)
 
         postgres.connect()
+        if(return_engine):
+            return postgres.engine
         con = postgres.engine.connect()
     else:
         return {}
