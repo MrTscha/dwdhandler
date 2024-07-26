@@ -1,4 +1,4 @@
-__version__ = '0.2.2cd'
+__version__ = '0.2.3'
 
 from .dow_handler import dow_handler
 from .plotting import plotconstr
