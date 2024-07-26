@@ -991,14 +991,9 @@ class dow_handler(dict):
 
         filename = 'file:{}?cache=shared'.format(self.pathdlocal+SQLITEFILESTAT)
 
-        lret_engine = self.driver in [POSTGRES_DRIVER]
-        lret_engine = False
-        print("return engine: ", lret_engine)
-
         con = open_database(filename, self.ldbsave, self.driver,debug=self.debug,
                             config_dir=self.config_dir,
-                            postfile=self.dbconfigfile,
-                            return_engine=lret_engine)
+                            postfile=self.dbconfigfile)
 
         if(self.driver in [POSTGRES_DRIVER]):
             tabname = f"{self.dbschema}.{self.par}_{self.resolution}"
