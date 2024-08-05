@@ -34,9 +34,18 @@ STATION_VAR_DICT = {
      'solar':[STATIONNAMEID,DATENAMESTAT,'QN','DS_10','GS_10','SD_10','LS_10','eor'],
      'wind':[STATIONNAMEID,DATENAMESTAT,'QN','FF_10','DD_10','eor']
     },
+    'hourly':
+    {
+        'air_temperature':[STATIONNAMEID, DATENAMESTAT, 'QN_9', 'TT_TU', 'RF_TU'],
+        'extreme_wind':[STATIONNAMEID, DATENAMESTAT, 'QN_8', 'FX_911'],
+        'moisture':[STATIONNAMEID, DATENAMESTAT, 'QN_8', 'ABSF_STD','VP_STD','TF_STD','P_STD','TT_STD','RF_STD','TD_STD'],
+        'precipitation':[STATIONNAMEID, DATENAMESTAT, 'QN_8', 'R1', 'RS_IND', 'WRTR'],
+        'pressure':[STATIONNAMEID, DATENAMESTAT, 'QN_8', 'P','P0'],
+    },
     'daily':
     {
-        'kl':[STATIONNAMEID,DATENAMESTAT,'QN_3','FX','FM','QN_4','RSK','RSKF','SDK','SHK_TAG','NM','VPM','PM','TMK','UPM','TXK','TNK','TGK','eor']
+        'kl':[STATIONNAMEID,DATENAMESTAT,'QN_3','FX','FM','QN_4','RSK','RSKF','SDK','SHK_TAG','NM','VPM','PM','TMK','UPM','TXK','TNK','TGK','eor'],
+        'more_precip':[STATIONNAMEID, DATENAMESTAT,'QN_6','RS','RSF','SH_TAG','NSH_TAG','eor']
     }
 }
 
