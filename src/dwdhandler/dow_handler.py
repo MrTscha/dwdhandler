@@ -453,7 +453,7 @@ class dow_handler(dict):
                             config_dir=self.config_dir,
                             postfile=self.dbconfigfile)
 
-        if(check_for_table(con,self.tabname)):
+        if(check_for_table(con,self.tabname,self.driver)):
             print(f"Table {self.tabname} exists")
             lcreate=False
         else:
@@ -479,7 +479,7 @@ class dow_handler(dict):
             df_tmp.columns = df_tmp.columns.str.replace('/','_')
             if(lcreate):
                 create_table_regavg(con,resolution=self.resolution,par=self.par,keys=df_tmp.keys())
-            write_sqlite_data(df_tmp, con, self.tabname)
+            write_sqlite_data(df_tmp, con, self.tabname, self.driver)
 
         # close ftp connection
         metaftp.close_ftp()
