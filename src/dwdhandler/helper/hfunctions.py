@@ -42,11 +42,12 @@ def read_station_list(dir_in,file_in,debug=False):
 
     # First Line and Line with ------ ----- are skipped
     df_out = pd.read_fwf(dir_in+file_in,skiprows=[0,1],
-                          names=['Stations_id', 'von', 'bis', 'hoehe','lat','lon','name','bundesland']) 
+                          names=['Stations_id', 'von', 'bis', 'hoehe','lat','lon','name','bundesland','abgabe']) 
     df_out['Stations_id'] = df_out['Stations_id'].apply(lambda x: '{0:0>5}'.format(x))
     df_out['von'] = pd.to_datetime(df_out['von'],format="%Y%m%d")
     df_out['bis'] = pd.to_datetime(df_out['bis'],format="%Y%m%d")
     df_out.set_index('Stations_id', inplace=True)
+
 
     if(debug):
         print("{} stations read".format(df_out.shape[0]))
