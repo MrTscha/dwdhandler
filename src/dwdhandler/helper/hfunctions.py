@@ -366,6 +366,7 @@ def create_table_res_climstats(con,
                                par,
                                tablename,
                                ctype=None,
+                               driver=SQLITE_DRIVER,
                                debug=False):
     """
         Create table of climstats according given resolution and parameter
@@ -376,7 +377,7 @@ def create_table_res_climstats(con,
     """
 
     create_stmt = create_statement(resolution=resolution,par=par,
-                                   tabname=tablename,lclimstat=True,ctype=ctype)
+                                   tabname=tablename,lclimstat=True,ctype=ctype,driver=driver)
     print(tablename)
     print(create_stmt)
     con.execute(create_stmt)
