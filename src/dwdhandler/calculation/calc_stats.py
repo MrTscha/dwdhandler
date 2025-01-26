@@ -16,9 +16,11 @@ import pandas as pd
 
 #local modules
 from ..constants.filedata import *
+from ..constants.constpar import (SQLITE_DRIVER)
 from ..helper.hfunctions import (write_sqlite, write_exc_info, write_sqlite_data,
                                  drop_table, open_database, 
-                                 check_for_table, create_table_res_climstats)
+                                 check_for_table, create_table_res_climstats,
+                                 check_drivers)
 
 # create class for station data
 class station_data_handler(dict):
@@ -32,6 +34,7 @@ class station_data_handler(dict):
                  par=None,
                  base_dir=os.getcwd()+'/'+MAIN_FOLDER,
                  year_spec=None,
+                 driver=SQLITE_DRIVER,
                  ldebug=False):
         """
         Init station data handler.
@@ -43,6 +46,7 @@ class station_data_handler(dict):
         var_max  : Only calculate the maximum in resampled space
         base_dir : Should be the same directory like sqlite data is stored to use one database
         year_spec: Is a special year wanted
+        driver   : Specify driver to use
         ldebug   : Some additional output
         """
 
@@ -68,6 +72,8 @@ class station_data_handler(dict):
         else:
             self.year_spec = df_tot.index.year[-1]  # should be a sorted index
         self.ldebug    = ldebug
+
+        self.ldbsave = check_drivers(driver)
 
         self.FillValue = -999.
 
@@ -461,7 +467,8 @@ class station_data_handler(dict):
         except:
             write_exc_info()
 
-    def write_all_clim_sqlite(self,key,clim_norms=None,force=False):
+    def write_all_clim_sqlite(self,key,clim_norms=None,force=False,
+                              driver=SQLITE_DRIVER):
         """Loop over DataFrames containing climatic normal periods
         Attention prepare_to_sqlite should be performed prior!
         clim_norms: Specify special normal periods as desired --> starting year as list
@@ -480,28 +487,28 @@ class station_data_handler(dict):
                 print("Write daily clim vals")
             sdf_name = f'df_daily_c_{years}'
             tabname  = f'{self.tabname_c}_daily_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm',driver)
 
             #write monthly vals
             if(self.ldebug):
                 print("Write monthly clim vals")
             sdf_name = f'df_monthly_c_{years}'
             tabname  = f'{self.tabname_c}_monthly_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm',driver)
 
             #write yearly vals
             if(self.ldebug):
                 print("Write yearly clim vals")
             sdf_name = f'df_yearly_c_{years}'
             tabname  = f'{self.tabname_c}_yearly_{years}'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm')
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'norm',driver)
 
         try:
             if(self.ldebug):
                 print("Write daily clim stats")
             sdf_name = 'df_daily_clim_stats'
             tabname  = f'{self.tabname_c}_daily_climstats'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats')
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats',driver)
         except:
             write_exc_info()
         try:
@@ -509,13 +516,14 @@ class station_data_handler(dict):
                 print("Write monthly clim stats")
             sdf_name = 'df_monthly_clim_stats'
             tabname  = f'{self.tabname_c}_monthly_climstats'
-            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats')
+            self.write_clim_to_sqlite(self[sdf_name],key,tabname,'climstats',driver)
         except:
             write_exc_info()
 
 
     def write_clim_to_sqlite(self,df_in,key,
-                             tablename,ctype=None):
+                             tablename,ctype=None,
+                             driver=SQLITE_DRIVER):
         """Write sqlite data to 
         df_in: prepared DataFrame --> prepare_to_sqlite should be performed before
         key: Station ID
@@ -525,9 +533,9 @@ class station_data_handler(dict):
         # construct filename
         filename = self.base_dir+STATION_FOLDER+SQLITEFILESTAT
 
-        con = open_database(filename)
+        con = open_database(filename,ldbsave=self.ldbsave)
 
-        if(check_for_table(con,tablename)):
+        if(check_for_table(con,tablename,driver=driver)):
             lcreate=False
         else:
             lcreate=True
@@ -535,7 +543,7 @@ class station_data_handler(dict):
         if(lcreate):
             create_table_res_climstats(con,self.resolution,self.par,tablename,ctype=ctype)
 
-        write_sqlite_data(df_in, con, tablename,debug=self.ldebug)
+        write_sqlite_data(df_in, con, tablename,driver=driver,debug=self.ldebug)
 
         con.close()
     
